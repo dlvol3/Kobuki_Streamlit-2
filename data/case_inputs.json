@@ -1,0 +1,83 @@
+{
+  "version": "2026-10-19-v3",
+  "source": {
+    "file": "Kobuki_Group_4.xlsx",
+    "sheet": "Question 1",
+    "sha256": "1ab11a1171b7fa66ce75730e4375725604571b49bd2b5d0aa180646ce0a1cd3f",
+    "input_cells": {
+      "price": "C7",
+      "unit_variable_cost": "C8",
+      "annual_fixed_cost": "C9",
+      "capex": "C15",
+      "life": "C16",
+      "salvage": "C17",
+      "initial_nwc": "C23",
+      "nwc_ratio": "C24",
+      "tax_rate": "C26",
+      "risk_free": "F30",
+      "credit_spread": "F33",
+      "beta": "F31",
+      "market_risk_premium": "F32",
+      "debt_weight": "C35",
+      "equity_weight": "C34"
+    },
+    "sales_cells": "D43:J43",
+    "npv_cell": "C59",
+    "irr_cell": "C61",
+    "fcf_cells": "C56:J56"
+  },
+  "inputs": {
+    "price": 5.1,
+    "unit_variable_cost": 1.6,
+    "annual_fixed_cost": 240000,
+    "capex": 2590000,
+    "life": 7,
+    "salvage": 210000,
+    "initial_nwc": 80000,
+    "nwc_ratio": 0.1,
+    "tax_rate": 0.35,
+    "risk_free": 0.0236,
+    "credit_spread": 0.0203,
+    "beta": 2.15,
+    "market_risk_premium": 0.06,
+    "debt_weight": 0.4,
+    "equity_weight": 0.6,
+    "base_units": [
+      160000,
+      220000,
+      250000,
+      250000,
+      250000,
+      250000,
+      250000
+    ]
+  },
+  "presets": {
+    "q1": {
+      "label": "Q1 baseline",
+      "sales_coefficient": 1.0,
+      "fixed_cost_change": 0.0,
+      "sheet": "Question 1"
+    },
+    "q2": {
+      "label": "Q2 baseline",
+      "sales_coefficient": 1.1,
+      "fixed_cost_change": -20000,
+      "sheet": "Question 2",
+      "source_cells": {
+        "sales_uplift": "C8",
+        "project_fixed_cost_change": "C9",
+        "corporate_fixed_cost_change": "C10"
+      }
+    }
+  },
+  "assumptions": [
+    "Annual year-end operating cash flows.",
+    "NWC equals 0.10 of current-year revenue in Years 1\u20136; terminal NWC is zero after liquidation.",
+    "The Year 1 loss immediately reduces tax paid on other group income.",
+    "Initial NWC remains EUR 80,000 as either sensitivity input changes.",
+    "Sales scale within existing capacity; no additional CAPEX is modelled.",
+    "Past R&D and allocated existing corporate costs are excluded.",
+    "Q2 preset applies 1.10 times Q1 units and a net annual fixed-cost change of EUR -20,000; other inputs are shared."
+  ]
+}
