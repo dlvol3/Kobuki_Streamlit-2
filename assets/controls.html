@@ -1,15 +1,15 @@
 <div class="drivers">
-  <section class="driver sales">
-    <div class="driver-name">Base demand</div>
-    <div class="driver-unit">before price response</div>
-    <output id="sales-readout">100.0%</output>
+  <section class="driver price">
+    <div class="driver-name">Price per can</div>
+    <div class="driver-unit">EUR / can</div>
+    <output id="price-readout">€5.1000</output>
     <div class="vertical-track">
-      <span class="top-label" id="sales-max">200%</span>
-      <input type="range" id="sales-range" aria-label="Demand coefficient before price response" min="50" max="200" step="0.01" value="100" />
-      <span class="bottom-label">50%</span>
+      <span class="top-label" id="price-max">€6.63</span>
+      <input type="range" id="price-range" aria-label="Price per can" min="4.08" max="6.63" step="0.001" value="5.1" />
+      <span class="bottom-label" id="price-min">€4.08</span>
     </div>
-    <label class="exact-label" for="sales-number">Coefficient ×</label>
-    <input class="exact-number" id="sales-number" aria-label="Exact demand coefficient" type="number" min="0.5" max="2" step="0.001" value="1" />
+    <label class="exact-label" for="price-number">Price · EUR/can</label>
+    <input class="exact-number" id="price-number" aria-label="Exact price per can" type="number" min="4.08" max="6.63" step="0.001" value="5.1" />
   </section>
   <section class="driver costs">
     <div class="driver-name">Fixed costs</div>
@@ -24,5 +24,4 @@
     <input class="exact-number" id="cost-number" aria-label="Exact annual fixed cost change" type="number" min="-240000" max="600000" step="1000" value="0" />
   </section>
 </div>
-<p class="driver-note">Positive cost change adds expense. Negative change saves the same amount in every production year.</p>
-
+<p class="driver-note">Fixed-cost changes are relative to Q1 (€240,000/year). Q2 uses −€20,000, giving €220,000/year.</p>

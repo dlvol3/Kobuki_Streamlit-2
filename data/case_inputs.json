@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-21-ceo",
+  "version": "2026-10-21-sales-price",
   "source": {
     "file": "Kobuki_Group_4.xlsx",
     "sheet": "Question 1",
@@ -74,25 +74,61 @@
   "assumptions": [
     "Annual year-end operating cash flows.",
     "NWC equals 0.10 of current-year revenue in Years 1\u20136; terminal NWC is zero after liquidation.",
-    "The Year 1 loss immediately reduces tax paid on other group income.",
-    "Initial NWC remains EUR 80,000 as either sensitivity input changes.",
-    "Sales scale within existing capacity; no additional CAPEX is modelled.",
+    "Year 1 tax loss immediately offsets other group income.",
+    "Initial NWC remains EUR 80,000 and WACC is unchanged. Price examples assume no extra machine; maximum capacity is not supplied.",
     "Past R&D and allocated existing corporate costs are excluded.",
-    "Q2 preset applies 1.10 times Q1 units and a net annual fixed-cost change of EUR -20,000; other inputs are shared.",
-    "Price is realised net selling price; variable unit cost and price scale uniformly across Years 1\u20137.",
-    "Price elasticity is hypothetical and constant, not estimated or endorsed as a forecast.",
-    "Demand coefficient is measured before price response; price changes also alter current-year-revenue NWC.",
-    "Incremental marketing and distribution spending must be included in fixed or variable costs; extra capacity CAPEX and minimum-order inventory effects need separate extension.",
-    "Positive NPV regions are deterministic model feasibility, not probabilities, confidence intervals or a safety guarantee."
+    "Q1/Q2 buttons select the original volume plan and reset price/fixed costs.",
+    "Price changes automatically alter can sales using an assumed elasticity of 1 only.",
+    "Annual fixed-cost changes are flat amounts relative to Q1 EUR 240,000; Q2 uses EUR -20,000.",
+    "All other case inputs remain fixed, including EUR 1.60 production cost per can.",
+    "Green shading shows modelled positive NPV, not a probability or guaranteed outcome.",
+    "Separate sales-only test locks price at EUR5.10 and annual fixed costs at EUR220000; 100% of Q1 means no extra Q2 uplift, not flat annual sales."
   ],
   "scenario_extensions": {
-    "classification": "Illustrative management sensitivities; no estimated price elasticity supplied in the case",
-    "volume_rule": "Q1 annual units * demand_coefficient * price_coefficient ** (-demand_elasticity)",
-    "price_range_for_frontier": [
-      0.8,
-      1.3
+    "classification": "Illustrative price-response sensitivities; no estimated elasticity is supplied",
+    "adjustable_inputs": [
+      "price_per_can",
+      "annual_fixed_cost_change"
     ],
-    "demand_elasticity_default": 0.0,
-    "cashflow_scope": "Full project, before investment; continuation decisions after launch require remaining avoidable cash flows"
+    "volume_rule": "selected Q1/Q2 annual cans * (price_per_can / 5.10) ** (-elasticity)",
+    "main_elasticity": 1.0,
+    "price_range": [
+      4.08,
+      6.63
+    ],
+    "fixed_inputs": "Case production cost, CAPEX, salvage, tax and financing parameters unchanged",
+    "cashflow_scope": "Full project before investment",
+    "sales_only": {
+      "fixed_price": 5.1,
+      "annual_fixed_cost": 220000,
+      "sales_coefficients_vs_q1": [
+        0.9,
+        1.0,
+        1.1
+      ],
+      "no_extra_sales_definition": "No Q2 10% uplift; keep corresponding Q1 annual volumes"
+    },
+    "map_examples": [
+      {
+        "point": "A",
+        "price": 4.5,
+        "annual_fixed_cost": 190000
+      },
+      {
+        "point": "B",
+        "price": 5.1,
+        "annual_fixed_cost": 220000
+      },
+      {
+        "point": "C",
+        "price": 5.355,
+        "annual_fixed_cost": 250000
+      },
+      {
+        "point": "D",
+        "price": 4.5,
+        "annual_fixed_cost": 220000
+      }
+    ]
   }
 }

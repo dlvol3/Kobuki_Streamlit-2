@@ -1,98 +1,56 @@
-# Kobuki / Wake Up! sensitivity analysis
+# Wake Up! · Group 2: Jorge, Pablo, Yue
 
-Streamlit + Apache ECharts · Group 2: Jorge Pablo Yue · Version 2026-10-21-ceo
+## Price and annual fixed-cost controls
 
-## Open locally
+- Price per can: EUR 4.08–6.63; original price EUR 5.10.
+- Flat annual fixed-cost change relative to Q1's EUR 240,000/year. Q2 uses EUR -20,000, giving EUR 220,000/year.
 
-Double-click **Start_Kobuki.command**, then open <http://127.0.0.1:8501>.
+Q1 and Q2 buttons restore the original case plans. The headline, cash flows and NPV/IRR charts use those two controls. Price changes use one assumed response only:
 
-In VS Code, open this **Kobuki_Streamlit** folder, then use **Tasks: Run Task > Start Kobuki** from the Command Palette. The task uses the local `.venv` environment. If the app is already running on port 8501, use the existing browser page.
+`cans = selected Q1/Q2 plan cans × 5.10 / price`
 
-For a fresh Python 3.12 environment:
+A 1% price rise reduces cans by about 1%. Production cost stays at EUR 1.60/can. Revenue, tax, working capital and free cash flow are recalculated. WACC remains 0.102974; original Q1/Q2 NPVs remain -EUR 216,165.76 / +EUR 91,902.60.
+
+## Figure 1: sales shortfall only
+
+This panel is separate from the price/cost controls: price stays EUR 5.10 and annual fixed costs EUR 220,000. The same sales factor applies to each corresponding Q1 year (160,000 / 220,000 / 250,000 cans, then 250,000 through Year 7).
+
+- 90% of Q1: 10% fewer cans than Q1; NPV -EUR 398,885.14.
+- 100% of Q1: no additional Q2 sales, keeping Q1's growth between years; NPV -EUR 153,491.27.
+- 110% of Q1: the full Q2 forecast; NPV +EUR 91,902.60.
+
+Break-even is 106.2549% of each Q1 year: 6.2549% above Q1, or 3.4046% below Q2. Scenario buttons change only this panel. Market demand, a competing drink or fewer repeat purchases after promotion are possible reasons for a miss.
+
+## Figure 2: price and the fixed-cost ceiling
+
+The map always uses Q2's underlying sales plan and the same inverse price response. Green below the dashed line means positive NPV. Hollow circles show zero-NPV annual fixed-cost ceilings; A/B/C/D are worked examples. The current marker appears only when Q2 is selected in the main controls.
+
+- A: EUR 4.50/can and EUR 190,000 annual fixed costs; NPV +EUR 18,276.96, with EUR 5,832.34/year of cost headroom.
+- B: Q2 baseline; NPV +EUR 91,902.60, with EUR 29,326.95/year of cost headroom.
+- C: EUR 5.355/can and EUR 250,000 annual fixed costs; NPV +EUR 57,761.35, with EUR 18,432.17/year of cost headroom.
+- D: EUR 4.50/can and EUR 220,000 annual fixed costs; NPV -EUR 75,734.77. Fixed costs would have to fall below EUR 195,832.34/year for positive NPV at that price.
+
+Cost headroom is an annual amount; NPV is the present value of the whole project. At D, more cans exactly offset the lower price, leaving revenue unchanged, while total production spending rises. The discussion mentions a smaller discount, additional fixed savings, lower ingredient/packaging prices and less waste; no new savings are included in the calculations.
+
+There is no elasticity-2 comparison, independent sales slider, production-cost control or net-price control. Two break-even buttons find a price or annual fixed-cost ceiling while holding the other control fixed. All results appraise the full project before investment. Price examples assume no extra equipment.
+
+## Run locally
+
+Double-click `Start_Kobuki.command`, or use a Python 3.12 environment:
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-## Publish from VS Code to your GitHub
+## Update the existing Streamlit app
 
-1. Open **Source Control**. If needed, select **Initialize Repository** for this app folder.
-2. Review the files, stage the app changes, enter a commit message such as `Prepare Kobuki Group 2 app`, and select **Commit**.
-3. After the commit, select **Publish to GitHub** to create a repository in your account. If a GitHub remote already exists, use **Publish Branch** or **Push** instead. Follow the browser sign-in prompt and return to VS Code.
-4. Open the repository on GitHub and confirm that `app.py`, `requirements.txt`, `assets/`, `data/` and `.streamlit/config.toml` are present.
+Review the changed files in VS Code, commit and push the existing main branch. If the cloud app retains old imports, use Manage app > Reboot app. No commit or push has been performed automatically.
 
-**Settings Sync is not required.** GitHub sign-in for publishing uses VS Code's built-in Git authentication. A Settings Sync authentication error does not, by itself, indicate that Git push has failed. See the official [GitHub workflow in VS Code](https://code.visualstudio.com/docs/sourcecontrol/github).
-
-## Deploy the GitHub repository
-
-In [Streamlit Community Cloud](https://share.streamlit.io/), choose **Create app**, then select your GitHub repository and published branch. With this app folder as the repository root, set **Main file path** to **`app.py`** and **Advanced settings > Python version** to **3.12**. This app needs no secrets. Deploy, then share the resulting `streamlit.app` address with the professor. See the official [deployment instructions](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy).
-
-## CEO decision scenarios · 21 October 2026
-
-The page now connects demand, net selling price, unit variable cost and execution spending. The original Q1/Q2 baselines are unchanged. The case attributes the Q2 volume uplift to promotions and advantageous display arrangements; other explanations for sales changes are management hypotheses.
-
-- **Demand before pricing:** the original volume coefficient, before the selected price response.
-- **Net selling price / variable cost:** editable EUR per can; price changes alter revenue-linked NWC as well as contribution.
-- **Assumed elasticity:** non-negative scenario magnitude; actual units = Q1 units × demand coefficient × (price / 5.10)^(-elasticity). Zero holds units fixed. The case supplies no estimate.
-- **Joint price-demand map:** shaded green denotes positive full-project NPV; dashed boundary denotes zero NPV. It is deterministic feasibility, not confidence or guaranteed safety. Held costs and elasticity are disclosed.
-- **Price-response chart:** compares unchanged volume with the selected demand response; nonlinear cases may have multiple price break-even points.
-- **Recovery choices:** solve demand, annual fixed cost, price or unit variable-cost boundaries while holding the other assumptions fixed. Price search is bounded to EUR 4.08–6.63.
-- **Execution-budget shortcut:** a combined hypothetical rescue includes EUR 10k additional annual spend, rather than assuming implementation is free.
-
-Cost actions must be assessed for effects on marketing, product quality, service and demand. Larger procurement orders can increase inventory/NWC. Capacity and incremental CAPEX are not optimised: any scenario requiring extra equipment needs a revised case. These are **pre-investment** boundaries; post-launch continuation uses remaining avoidable cash flows.
-
-Reconciled example: Q2 demand -5% gives NPV -EUR 43,064. Price +5% gives +EUR 144,875 with fixed units, +EUR 13,813 at assumed elasticity 1, and -EUR 111,008 at elasticity 2. With unchanged price, unit cost EUR 1.542313/can or annual fixed costs EUR 206,257.88 are alternative zero-NPV limits.
-
-## Original controls
-
-- **Q1 baseline:** original sales path and EUR 240,000 annual fixed costs.
-- **Q2 baseline:** 1.10 times Q1 unit sales; EUR 40,000 project savings plus EUR 20,000 additional corporate cost. Net annual fixed costs are EUR 220,000.
-- **Can sales:** multiply every year's Q1 units by one coefficient. The display includes percentage and annual can volumes.
-- **Fixed costs:** add or subtract the same EUR amount in each production year.
-- **Find break-even sales / fixed costs:** hold the other input constant and solve NPV = 0.
-
-The large decision banner, NPV, IRR, contribution and actual volume update together. WACC stays fixed at **0.102974**. Returns are displayed primarily as decimals.
-
-The two charts share the selected sensitivity axis. Decision focus is the default; Full range provides wider context. Grey is the Q1 reference curve; the dashed curve holds the selected price, unit cost, elasticity and other driver at their current values. An open dot fixes the actual Q1 result, while a labelled ring marks the selected scenario and a dotted connector shows their difference. Green and pink regions distinguish outcomes above and below the hurdle; the gold diamond is break-even. Change versus Q1 is shown above both charts. Each chart offers a PNG download. One **Cash flows** expander provides a compact annual table and the complete CSV.
-
-## Workbook reconciliation
-
-Inputs and reference outputs were extracted read-only from `Kobuki_Group_4.xlsx`, sheets `Question 1` and `Question 2`. The workbook is not changed or required at runtime.
-
-| Metric | Q1 baseline | Q2 baseline |
-|---|---:|---:|
-| Sales coefficient vs Q1 | 1.000000 | 1.100000 |
-| Annual fixed costs, EUR | 240,000 | 220,000 |
-| WACC | 0.102974 | 0.102974 |
-| NPV, EUR | -216,165.762346 | 91,902.595498 |
-| IRR | 0.080720058733 | 0.112189728520 |
-| Decision | Reject | Accept |
-
-With Q1 costs held constant, sales break-even is **1.088089308660** times the Q1 forecast. With Q1 sales held constant, the fixed-cost change at break-even is **EUR -68,980.462375/year**.
-
-The model preserves the workbook's annual timing and immediate group-level tax loss offsets. Initial NWC is EUR 80,000; closing NWC is 0.10 of current-year revenue in Years 1–6 and zero in Year 7. Terminal NWC recovery is counted once. Sales sensitivity assumes existing equipment capacity and no extra CAPEX. Every headline, chart and solver uses the same full-precision model; absolute NPV up to EUR 1 is labelled break-even.
-
-## Files and validation
-
-- `app.py`: page and scenario state.
-- `finance.py`: cash flows, WACC, NPV, IRR and break-even solvers.
-- `charts.py`: chart data and options.
-- `controls.py`, `echarts_component.py`, `assets/`: vertical controls and local ECharts renderer.
-- `data/`: extracted inputs, presets, reference outputs and Q1 cash flows.
-- `.streamlit/config.toml`, `requirements.txt`: theme and runtime dependencies.
-- `tests/`: workbook reconciliation and interaction checks.
+## Check
 
 ```sh
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -q
 ```
 
-The extraction utility `tools/extract_workbook.py` requires `openpyxl` and the original workbook. Re-run validation after refreshing its data.
-
-## Sharing
-
-This folder is ready to use as a Streamlit app source. Include all source files, `assets/`, `data/`, `.streamlit/config.toml` and `requirements.txt`; exclude `.venv/`, caches, original workbooks and case PDFs. The local address works only on the computer running the app. A public URL is available only after a separate hosting deployment.
-
-ECharts 5.6.0 is bundled locally, retaining its Apache License 2.0 notice. Source: <https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js>. Charts require no external CDN at runtime.
+Forty-four tests passed; local browser checks covered the sales-only buttons and a negative-NPV map example. Apache ECharts is bundled with its licence notices. Original case workbooks are not required at runtime.

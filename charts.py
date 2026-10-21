@@ -1,9 +1,9 @@
-"""Sensitivity curves and actual-scenario comparisons from the shared model."""
+SCOPE_VERSION = "sales-price-fixed-v3"
+"""Price and fixed-cost sensitivities with automatic price-volume response."""
 import math
 import numpy as np
 from echarts_component import JsCode
-
-from finance import model, npv_only, solve_sales, solve_fixed_cost
+from finance import model, npv_only, solve_fixed_cost, solve_price, solve_sales
 
 BG='#FFFFFF'
 GRID='#E5EBF1'
@@ -13,353 +13,256 @@ TEAL='#087D68'
 VIOLET='#6652B8'
 GOLD='#96600B'
 GREY='#8B99AA'
+BASE_ELASTICITY=1.0
 
 
-def scenario_kwargs(active):
-    return {name: getattr(active, name, default) for name, default in [('price_coefficient', 1.0), ('variable_cost_coefficient', 1.0), ('demand_elasticity', 0.0)]}
+def _money(value):
+    return f'{"-" if value<0 else ""}€{abs(value):,.0f}'
 
 
-def sensitivity(case, active, axis='Sales coefficient', full_range=False):
-    sales_axis=axis=='Sales coefficient'
-    kwargs=scenario_kwargs(active)
-    root=solve_sales(case,active.fixed_cost_change,**kwargs) if sales_axis else solve_fixed_cost(case,active.sales_coefficient,**kwargs)
-    current=active.sales_coefficient if sales_axis else active.fixed_cost_change
-    anchors=[1.0,1.1,current] if sales_axis else [0.0,-20000.0,current]
-    if root is not None:anchors.append(root)
+def _series_map(chart):
+    return {s['id']:s for s in chart['series']}
+
+
+def _axis_style():
+    return {'axisLine':{'lineStyle':{'color':'#CBD5E0'}},'axisTick':{'show':False},
+            'splitLine':{'lineStyle':{'color':GRID,'type':'dashed'}}}
+
+
+def _result(case,active,price=None,cost=None,elasticity=BASE_ELASTICITY):
+    return model(case,active.sales_coefficient,
+                 active.fixed_cost_change if cost is None else cost,
+                 price_coefficient=active.price_coefficient if price is None else price/case.price,
+                 demand_elasticity=elasticity)
+
+
+def _price_range(case,active,full_range=False):
+    current=case.price*active.price_coefficient
+    lo=min(case.price*.8,current*.97)
+    hi=max(case.price*1.3,current*1.03)
     if full_range:
-        if sales_axis:
-            lo=max(0,min(.5,min(anchors)-.05))
-            hi=math.ceil(max(1.5,max(anchors)+.1)*10)/10
-        else:
-            lo=-case.annual_fixed_cost
-            hi=math.ceil(max(300000,max(anchors)+30000)/50000)*50000
-    elif sales_axis:
-        lo=max(0,math.floor((min(anchors)-.07)*20)/20)
-        hi=math.ceil((max(anchors)+.07)*20)/20
-        if hi-lo<.30:
-            lo=max(0,math.floor((lo-(.30-(hi-lo))/2)*20)/20)
-            hi=max(hi,lo+.30)
+        lo=min(lo,case.price*.6)
+        hi=max(hi,case.price*1.5)
+    return max(.01,lo),hi
+
+
+def operating_sensitivity(case,active,axis='Price per can',full_range=False):
+    """Return sweep rows and zero-NPV roots, in the axis's actual units.
+
+    Price axis is EUR/can. Fixed-cost axis is EUR/year change against Q1.
+    Q1 reference and selected curves both use an illustrative elasticity of 1;
+    only the selected baseline sales path and held operating lever differ.
+    """
+    if axis not in ('Price per can','Fixed-cost change'):
+        raise ValueError('Unknown operating sensitivity axis.')
+    price_axis=axis=='Price per can'
+    if price_axis:
+        lo,hi=_price_range(case,active,full_range)
+        roots=tuple(r*case.price for r in solve_price(case,active.sales_coefficient,
+            active.fixed_cost_change,demand_elasticity=BASE_ELASTICITY,
+            lower=lo/case.price,upper=hi/case.price))
+        anchors=[case.price,case.price*active.price_coefficient,*roots]
     else:
-        pad=max(20000,(max(anchors)-min(anchors))*.15)
-        lo=max(-case.annual_fixed_cost,math.floor((min(anchors)-pad)/50000)*50000)
-        hi=math.ceil((max(anchors)+pad)/50000)*50000
-        if hi-lo<100000:hi=lo+100000
-    xs=sorted(set([float(x) for x in np.linspace(lo,hi,111)]+anchors))
+        root=solve_fixed_cost(case,active.sales_coefficient,
+            price_coefficient=active.price_coefficient,demand_elasticity=BASE_ELASTICITY)
+        roots=() if root is None else (root,)
+        anchors=[0.,-20000.,active.fixed_cost_change,*roots]
+        if full_range:
+            lo=-case.annual_fixed_cost
+            hi=max(300000.,max(anchors)+50000)
+        else:
+            pad=max(30000.,(max(anchors)-min(anchors))*.18)
+            lo=max(-case.annual_fixed_cost,math.floor((min(anchors)-pad)/25000)*25000)
+            hi=math.ceil((max(anchors)+pad)/25000)*25000
+            if hi-lo<100000:hi=lo+100000
+    xs=sorted(set(float(v) for v in np.linspace(lo,hi,111))|set(anchors))
     rows=[]
     for x in xs:
-        base=model(case,x,0) if sales_axis else model(case,1,x)
-        selected=model(case,x,active.fixed_cost_change,**kwargs) if sales_axis else model(case,active.sales_coefficient,x,**kwargs)
-        rows.append({'x':x,'sales_coefficient':selected.sales_coefficient,'fixed_cost_change_eur':selected.fixed_cost_change,'effective_sales_coefficient':getattr(selected,'effective_sales_coefficient',selected.sales_coefficient),
-                     'reference_npv_eur':base.npv,'current_npv_eur':selected.npv,'reference_irr':base.irr,'current_irr':selected.irr,'wacc':case.wacc})
-    return rows,root
+        if price_axis:
+            reference=model(case,price_coefficient=x/case.price,demand_elasticity=BASE_ELASTICITY)
+            selected=_result(case,active,price=x)
+        else:
+            reference=model(case,1,x,demand_elasticity=BASE_ELASTICITY)
+            selected=_result(case,active,cost=x)
+        rows.append({'x':x,'reference_npv_eur':reference.npv,'current_npv_eur':selected.npv,
+                     'reference_irr':reference.irr,'current_irr':selected.irr,
+                     'actual_sales_coefficient':selected.effective_sales_coefficient,
+                     'price_per_can':selected.unit_price,'annual_fixed_cost':selected.annual_fixed_cost,
+                     'wacc':case.wacc})
+    return rows,roots
 
 
-def options(case, active, rows, root, axis, metric):
-    sales_axis=axis=='Sales coefficient'
-    npv_metric=metric=='NPV'
+def operating_options(case,active,rows,roots,axis,metric):
+    """NPV/IRR view with truthful Q1/current points and fixed hurdle."""
+    price_axis=axis=='Price per can'; npv_metric=metric=='NPV'
     color=TEAL if npv_metric else VIOLET
-    xfactor=1 if sales_axis else 1000
-    yfactor=1000 if npv_metric else 1
-    base_key='reference_npv_eur' if npv_metric else 'reference_irr'
-    active_key='current_npv_eur' if npv_metric else 'current_irr'
-    reference=[[r['x']/xfactor,r[base_key]/yfactor if r[base_key] is not None else None] for r in rows]
-    current=[[r['x']/xfactor,r[active_key]/yfactor if r[active_key] is not None else None] for r in rows]
-    baseline=model(case)
-    base_x=1.0 if sales_axis else 0.0
-    base_y=baseline.npv/1000 if npv_metric else baseline.irr
-    point_x=active.sales_coefficient if sales_axis else active.fixed_cost_change/1000
-    point_y=active.npv/1000 if npv_metric else active.irr
-    target=0 if npv_metric else case.wacc
-    all_y=[p[1] for p in reference+current if p[1] is not None]+[target,base_y]
-    if point_y is not None:all_y.append(point_y)
-    span=max(all_y)-min(all_y)
-    padding=max(span*.20,45 if npv_metric else .018)
-    ymin,ymax=min(all_y)-padding,max(all_y)+padding
-    xmin,xmax=rows[0]['x']/xfactor,rows[-1]['x']/xfactor
-    same=point_y is not None and abs(point_x-base_x)<1e-10 and abs(point_y-base_y)<1e-9
-    at_break_even=abs(active.npv)<=1
-    current_label=('BREAK-EVEN\n' if at_break_even else 'Q1 / NOW\n' if same else 'NOW\n')+(f'€{active.npv:,.0f}' if npv_metric else f'{point_y:.6f}' if point_y is not None else 'Unavailable')
-    label_position='left' if point_x>xmin+(xmax-xmin)*.70 else 'right'
-    # Direct labels remain legible when the two scenario points are close.
-    label_offset=[0,-30] if abs(point_x-base_x)<(xmax-xmin)*.10 and not same else [0,-10]
-    guide_lines=[{'yAxis':target,'name':'NPV = 0' if npv_metric else f'WACC {case.wacc:.6f}',
-                  'lineStyle':{'color':GOLD,'type':'dashed','width':1.4},
-                  'label':{'show':True,'position':'insideEndBottom','color':GOLD,'fontSize':11,'padding':[4,3],
-                           'backgroundColor':'#FFFFFFDD','formatter':'NPV = 0' if npv_metric else f'WACC {case.wacc:.6f}'}}]
-    guide_lines.append({'xAxis':point_x,'label':{'show':False},'lineStyle':{'color':color,'type':'dotted','width':1.2,'opacity':.55}})
-    if root is not None and not at_break_even:
-        guide_lines.append({'xAxis':root/xfactor,'label':{'show':False},'lineStyle':{'color':GOLD,'type':'dotted','width':1,'opacity':.5}})
-    xformatter=JsCode("function(v){return Math.round(v*100)+'%';}").js_code if sales_axis else JsCode("function(v){return '€'+Math.round(v)+'k';}").js_code
+    xf=1 if price_axis else 1000
+    yf=1000 if npv_metric else 1
+    rk='reference_npv_eur' if npv_metric else 'reference_irr'
+    ck='current_npv_eur' if npv_metric else 'current_irr'
+    reference=[[r['x']/xf,None if r[rk] is None else r[rk]/yf] for r in rows]
+    current=[[r['x']/xf,None if r[ck] is None else r[ck]/yf] for r in rows]
+    baseline=model(case,demand_elasticity=BASE_ELASTICITY)
+    current_result=_result(case,active)
+    bx=case.price if price_axis else 0.
+    by=baseline.npv/yf if npv_metric else baseline.irr
+    px=active.unit_price if price_axis else active.fixed_cost_change/1000
+    py=current_result.npv/yf if npv_metric else current_result.irr
+    hurdle=0 if npv_metric else case.wacc
+    values=[p[1] for p in reference+current if p[1] is not None]+[hurdle,by]
+    if py is not None:values.append(py)
+    pad=max((max(values)-min(values))*.16,35 if npv_metric else .015)
+    ymin,ymax=min(values)-pad,max(values)+pad
+    same=py is not None and abs(px-bx)<1e-10 and abs(py-by)<1e-9
+    targetlabel='NPV = 0' if npv_metric else f'WACC {case.wacc:.6f}'
+    xformatter=JsCode("function(v){return '€'+v.toFixed(2);}" if price_axis else
+                      "function(v){return '€'+Math.round(v)+'k';}").js_code
     tooltip=JsCode("""function(items){
       if(!Array.isArray(items))items=[items];
       let first=items.find(p=>Array.isArray(p.value));if(!first)return '';
       let x=first.value[0];
-      let heading=SALES ? (x*100).toFixed(2)+'% of Q1 demand before pricing' : 'Annual fixed-cost change: €'+(x*1000).toLocaleString('en-IE',{maximumFractionDigits:0});
-      let html='<div style="font-weight:650;margin-bottom:8px">'+heading+'</div>';
+      let html='<b>'+ (PRICE?'Price €'+x.toFixed(2)+'/can':'Fixed-cost change €'+(x*1000).toLocaleString('en-IE'))+'</b>';
       for(let p of items){if(!Array.isArray(p.value)||p.value[1]===null||p.seriesId==='comparison_link')continue;
         let y=NPV?'€'+(p.value[1]*1000).toLocaleString('en-IE',{maximumFractionDigits:0}):p.value[1].toFixed(6);
-        html+='<div style="margin:5px 0">'+p.marker+' '+p.seriesName+': <b>'+y+'</b></div>';
+        html+='<div style="margin-top:6px">'+p.marker+' '+p.seriesName+': <b>'+y+'</b></div>';
       }return html;
-    }""".replace('SALES','true' if sales_axis else 'false').replace('NPV','true' if npv_metric else 'false')).js_code
-    opts={
-      'backgroundColor':BG,'animation':True,'animationDuration':450,'animationDurationUpdate':450,'animationEasingUpdate':'cubicOut',
-      'aria':{'enabled':True,'description':f'{metric} sensitivity to {axis}. Demand is measured before the assumed price response. Grey denotes the Q1 reference assumptions; the dashed curve holds current price, variable cost and elasticity assumptions. The ring is the selected scenario, and the diamond marks break-even.'},
-      'color':[GREY,color,GOLD],
-      'textStyle':{'fontFamily':'Inter, system-ui, sans-serif','color':MUTED},
-      'grid':{'left':58,'right':24,'top':66,'bottom':60},
-      'legend':{'data':['Q1 reference','Selected assumptions'],'left':0,'top':0,'textStyle':{'color':MUTED,'fontSize':10},'itemWidth':20,'itemHeight':8,'itemGap':12},
-      'tooltip':{'trigger':'axis','confine':True,'backgroundColor':'#FFFFFFF5','borderColor':'#D4DEE8','padding':12,'textStyle':{'color':INK,'fontSize':11},'formatter':tooltip,'axisPointer':{'type':'line','lineStyle':{'color':MUTED,'type':'dashed'}}},
-      'toolbox':{'show':True,'right':0,'top':-2,'iconStyle':{'borderColor':MUTED},'feature':{'saveAsImage':{'title':'Download PNG','name':f'Kobuki_Group2_{metric}_{"sales" if sales_axis else "cost"}','pixelRatio':2,'backgroundColor':BG}}},
-      'xAxis':{'type':'value','min':xmin,'max':xmax,'splitNumber':4,'name':'Demand before pricing vs Q1' if sales_axis else 'Fixed-cost change / year','nameLocation':'middle','nameGap':38,'nameTextStyle':{'fontSize':11,'color':MUTED},'axisLabel':{'color':MUTED,'fontSize':11,'formatter':xformatter,'hideOverlap':True},'axisLine':{'lineStyle':{'color':'#CBD5E0'}},'axisTick':{'show':False},'splitLine':{'show':False}},
-      'yAxis':{'type':'value','min':ymin,'max':ymax,'splitNumber':4,'name':'EUR thousands' if npv_metric else 'IRR · decimal','nameGap':20,'nameTextStyle':{'color':MUTED,'fontSize':11},'axisLabel':{'color':MUTED,'fontSize':11,'formatter':JsCode("function(v){return "+("Math.round(v).toLocaleString('en-IE')" if npv_metric else "v.toFixed(2)")+";}").js_code},'axisLine':{'show':False},'axisTick':{'show':False},'splitLine':{'lineStyle':{'color':GRID,'type':'dashed'}}},
-      'series':[
-        {'id':'q1_curve','name':'Q1 reference','type':'line','data':reference,'showSymbol':False,'connectNulls':False,'lineStyle':{'width':2.3,'color':GREY},'emphasis':{'focus':'series'},'z':2},
-        {'id':'scenario_curve','name':'Selected assumptions','type':'line','data':current,'showSymbol':False,'connectNulls':False,'lineStyle':{'width':2.7,'color':color,'type':'dashed'},
-         'markArea':{'silent':True,'label':{'show':False},'data':[[{'yAxis':target,'itemStyle':{'color':'#ECF7F2AA'}},{'yAxis':ymax}],[{'yAxis':ymin,'itemStyle':{'color':'#FFF0F2A6'}},{'yAxis':target}]]},
-         'markLine':{'silent':True,'symbol':'none','data':guide_lines},'emphasis':{'focus':'series'},'z':3},
-        {'id':'q1_point','name':'Q1 baseline','type':'scatter','data':[[base_x,base_y]],'symbol':'emptyCircle','symbolSize':11,
-         'itemStyle':{'color':GREY,'borderWidth':2},'label':{'show':not same,'formatter':'Q1','position':'bottom','distance':9,'color':MUTED,'fontSize':11,'backgroundColor':'#FFFFFFE6','padding':[2,4]},'z':6},
-        {'id':'current_point','name':'Current scenario','type':'effectScatter','data':[[point_x,point_y]] if point_y is not None else [],'symbolSize':15,'rippleEffect':{'scale':2.5,'brushType':'stroke','period':4},
-         'itemStyle':{'color':color,'borderColor':'#FFFFFF','borderWidth':3},
-         'label':{'show':True,'position':label_position,'offset':label_offset,'distance':14,'formatter':current_label,'fontSize':12,'fontWeight':650,'lineHeight':18,'color':color,'backgroundColor':'#FFFFFFF5','borderColor':color,'borderWidth':1,'borderRadius':6,'padding':[7,10]},'z':9},
-      ],
-    }
-    if point_y is not None and not same:
-        opts['series'].insert(2,{'id':'comparison_link','name':'Q1 to current','type':'line','data':[[base_x,base_y],[point_x,point_y]],'showSymbol':False,'silent':True,'lineStyle':{'color':color,'type':'dotted','width':1.4,'opacity':.7},'z':4})
-    if root is not None:
-        opts['series'].append({'id':'break_even','name':'Break-even','type':'scatter','data':[[root/xfactor,target]],'symbol':'diamond','symbolSize':12,'itemStyle':{'color':GOLD,'borderColor':'#FFFFFF','borderWidth':1.5},'z':7})
-    return opts
-
-
-def pricing_options(case, active):
-    """Price scenarios: fixed-volume upside versus explicitly assumed demand response.
-
-    All prices, volumes and NPVs are modelled, not observations. Demand before
-    pricing, annual fixed costs and unit variable cost remain held constant.
-    """
-    from finance import solve_price
-
-    lower, upper = .8, 1.3
-    elasticity = getattr(active, 'demand_elasticity', 0.0)
-    unit_cost = getattr(active, 'variable_cost_coefficient', 1.0)
-    selected_price = getattr(active, 'price_coefficient', 1.0)
-    roots = solve_price(case, active.sales_coefficient, active.fixed_cost_change,
-                        variable_cost_coefficient=unit_cost,
-                        demand_elasticity=elasticity, lower=lower, upper=upper)
-    coefficients = sorted(set([float(x) for x in np.linspace(lower, upper, 121)]
-                              + [1.0] + list(roots)
-                              + ([selected_price] if lower <= selected_price <= upper else [])))
-    fixed, response = [], []
-    for coefficient in coefficients:
-        common = dict(price_coefficient=coefficient,
-                      variable_cost_coefficient=unit_cost)
-        fixed.append([coefficient * case.price,
-                      npv_only(case, active.sales_coefficient, active.fixed_cost_change,
-                               demand_elasticity=0.0, **common) / 1000])
-        response.append([coefficient * case.price,
-                         npv_only(case, active.sales_coefficient, active.fixed_cost_change,
-                                  demand_elasticity=elasticity, **common) / 1000])
-    response_label = f'Response · ε = {elasticity:g}'
-    fixed_label = 'Fixed volume'
-    if elasticity == 0:
-        response_label = 'Fixed volume · ε = 0'
-    yvalues = [p[1] for p in fixed + response] + [0]
-    span = max(yvalues) - min(yvalues)
-    padding = max(span * .13, 25)
-    ymin, ymax = min(yvalues) - padding, max(yvalues) + padding
-    current_in_range = lower <= selected_price <= upper
-    price_formatter = JsCode("function(v){return '€'+v.toFixed(2);}").js_code
-    tooltip = JsCode("""function(items){
-      if(!Array.isArray(items))items=[items];
-      const first=items.find(p=>Array.isArray(p.value));if(!first)return '';
-      let html='<b>Price per can: €'+first.value[0].toFixed(2)+'</b>';
-      for(const p of items){if(!Array.isArray(p.value))continue;
-        html+='<div style="margin-top:6px">'+p.marker+' '+p.seriesName+': <b>€'+
-          (p.value[1]*1000).toLocaleString('en-IE',{maximumFractionDigits:0})+'</b></div>';
-      }return html;
-    }""").js_code
-    opts = {
-        'backgroundColor': BG, 'animationDurationUpdate': 350,
-        'textStyle': {'fontFamily': 'Inter, system-ui, sans-serif', 'color': MUTED},
-        'aria': {'enabled': True, 'description':
-                 'Modelled NPV as selling price changes, holding pre-price demand, '
-                 'annual fixed costs and unit variable cost unchanged. The dashed '
-                 f'curve uses an assumed elasticity of {elasticity:g}; this is not '
-                 'an estimated customer response. Diamonds are price break-even '
-                 'points within 80% to 130% of the original selling price.'},
-        'title': {'text': 'NPV · EUR thousands', 'left': 0, 'top': 0,
-                  'textStyle': {'fontSize': 11, 'fontWeight': 500, 'color': MUTED}},
-        'legend': {'type': 'scroll', 'data': ([fixed_label] if elasticity != 0 else []) + [response_label],
-                   'left': 0, 'right': 0, 'top': 27, 'itemWidth': 19, 'itemGap': 12,
-                   'textStyle': {'fontSize': 11, 'color': MUTED}},
-        'grid': {'left': 52, 'right': 18, 'top': 78, 'bottom': 60},
-        'tooltip': {'trigger': 'axis', 'confine': True, 'backgroundColor': '#FFFFFFF5',
-                    'borderColor': '#D4DEE8', 'textStyle': {'color': INK, 'fontSize': 11},
-                    'formatter': tooltip},
-        'toolbox': {'show': True, 'right': 0, 'top': 0,
-                    'feature': {'saveAsImage': {'title': 'Download PNG',
-                       'name': 'WakeUp_price_volume_tradeoff', 'pixelRatio': 2}}},
-        'xAxis': {'type': 'value', 'min': lower * case.price, 'max': upper * case.price,
-                  'splitNumber': 5, 'name': 'Price · EUR / can',
-                  'nameLocation': 'middle', 'nameGap': 38,
-                  'nameTextStyle': {'fontSize': 11, 'color': MUTED},
-                  'axisLabel': {'formatter': price_formatter, 'fontSize': 11,
-                                'hideOverlap': True, 'color': MUTED},
-                  'axisTick': {'show': False}, 'splitLine': {'show': False},
-                  'axisLine': {'lineStyle': {'color': '#CBD5E0'}}},
-        'yAxis': {'type': 'value', 'min': ymin, 'max': ymax, 'splitNumber': 4,
-                  'name': '', 'nameGap': 21,
-                  'nameTextStyle': {'fontSize': 11, 'color': MUTED},
-                  'axisLabel': {'fontSize': 11, 'color': MUTED,
-                    'formatter': JsCode("function(v){return Math.round(v).toLocaleString('en-IE');}").js_code},
-                  'axisLine': {'show': False}, 'axisTick': {'show': False},
-                  'splitLine': {'lineStyle': {'color': GRID, 'type': 'dashed'}}},
-        'series': []}
-    if elasticity != 0:
-        opts['series'].append({'id': 'price_fixed_volume', 'name': fixed_label,
-            'type': 'line', 'data': fixed, 'showSymbol': False,
-            'lineStyle': {'color': GREY, 'width': 2.2}, 'z': 2})
-    opts['series'].append({'id': 'price_response', 'name': response_label,
-        'type': 'line', 'data': response, 'showSymbol': False,
-        'lineStyle': {'color': TEAL, 'width': 2.8, 'type': 'dashed'}, 'z': 3,
-        'markArea': {'silent': True, 'label': {'show': False}, 'data': [
-            [{'yAxis': 0, 'itemStyle': {'color': '#ECF7F2AA'}}, {'yAxis': ymax}],
-            [{'yAxis': ymin, 'itemStyle': {'color': '#FFF0F2A6'}}, {'yAxis': 0}]]},
-        'markLine': {'silent': True, 'symbol': 'none', 'data': [
-            {'yAxis': 0, 'name': 'NPV = 0',
-             'lineStyle': {'color': GOLD, 'type': 'dashed', 'width': 1.3},
-             'label': {'formatter': 'NPV = 0', 'color': GOLD,
-                       'position': 'insideEndBottom'}},
-            {'xAxis': case.price, 'name': 'Original price',
-             'lineStyle': {'color': GREY, 'type': 'dotted'},
-             'label': {'formatter': f'Original €{case.price:.2f}', 'color': MUTED,
-                       'position': 'insideEndTop', 'fontSize': 10}}]}})
-    opts['series'].append({'id': 'price_current', 'name': 'Current scenario',
-        'type': 'scatter', 'data': [[case.price * selected_price, active.npv / 1000]] if current_in_range else [],
-        'symbolSize': 12, 'itemStyle': {'color': TEAL, 'borderColor': BG, 'borderWidth': 2},
-        'label': {'show': True, 'formatter': f'Now: {"-" if active.npv < 0 else ""}€{abs(active.npv):,.0f}',
-                  'position': 'top', 'distance': 10, 'color': TEAL,
-                  'fontSize': 11, 'backgroundColor': '#FFFFFFE8', 'padding': [3, 5]}, 'z': 6})
-    if roots:
-        opts['series'].append({'id': 'price_break_even', 'name': 'Price break-even',
-            'type': 'scatter', 'data': [[root * case.price, 0] for root in roots],
-            'symbol': 'diamond', 'symbolSize': 12,
-            'itemStyle': {'color': GOLD, 'borderColor': BG, 'borderWidth': 1.5}, 'z': 7})
-    return opts
-
-
-def decision_frontier_options(case, active):
-    """Joint price-demand decision map with shaded positive-NPV region.
-
-    Only the selected scenario is an outcome marker. Original price and Q2
-    demand are benchmarks evaluated under the selected held cost assumptions.
-    """
-    kwargs = scenario_kwargs(active)
-    current_price = case.price * kwargs['price_coefficient']
-    xmin = min(case.price * .8, current_price * .97)
-    xmax = max(case.price * 1.3, current_price * 1.03)
-    ymin = max(0.0, min(.75, active.sales_coefficient - .1))
-    ymax = max(1.35, active.sales_coefficient + .1)
-    from finance import solve_price
-    # Include exact intersections with the plot limits before constructing the
-    # fill, so shading begins at a true boundary rather than at a nearby sample.
-    edge_prices = []
-    for demand in (ymin, ymax):
-        edge_prices.extend(root * case.price for root in solve_price(
-            case, demand, active.fixed_cost_change,
-            variable_cost_coefficient=kwargs['variable_cost_coefficient'],
-            demand_elasticity=kwargs['demand_elasticity'],
-            lower=xmin / case.price, upper=xmax / case.price))
-    price_points = sorted(set([float(x) for x in np.linspace(xmin, xmax, 151)]
-                              + [case.price, current_price] + edge_prices))
-    boundary, thresholds = [], []
-    for price in price_points:
-        point_kwargs = dict(kwargs, price_coefficient=price / case.price)
-        root = solve_sales(case, active.fixed_cost_change, **point_kwargs)
-        top_npv = npv_only(case, ymax, active.fixed_cost_change, **point_kwargs)
-        bottom_npv = npv_only(case, ymin, active.fixed_cost_change, **point_kwargs)
-        # The positive region is above the root when demand improves NPV.
-        # If every visible demand value fails, its fill height is exactly zero.
-        if top_npv > 0:
-            threshold = ymin if bottom_npv >= 0 else max(ymin, min(ymax, root if root is not None else ymax))
-        else:
-            threshold = ymax
-        thresholds.append(threshold)
-        boundary.append([price, root] if root is not None else [price, None])
-    polygons = []
-    for i in range(len(price_points) - 1):
-        left, right = price_points[i], price_points[i+1]
-        left_root, right_root = thresholds[i], thresholds[i+1]
-        if left_root >= ymax and right_root >= ymax:
-            continue
-        polygons.append([left, right, left_root, right_root, ymax])
-    render_area = JsCode("""function(params, api){
-      let p=[api.coord([api.value(0),api.value(4)]),
-             api.coord([api.value(1),api.value(4)]),
-             api.coord([api.value(1),api.value(3)]),
-             api.coord([api.value(0),api.value(2)])];
-      return {type:'polygon',shape:{points:p},style:{fill:'#DFF2E8',stroke:'none'}};
-    }""").js_code
-    price_formatter = JsCode("function(v){return '€'+v.toFixed(2);}").js_code
-    demand_formatter = JsCode("function(v){return v.toFixed(2)+'×';}").js_code
-    frontier_tooltip = JsCode("""function(p){
-      if(p.seriesId==='decision_current')return '<b>Current scenario</b><br>Price €'+p.value[0].toFixed(2)+
-        '/can<br>Demand before pricing '+p.value[1].toFixed(4)+'× Q1<br>NPV €'+
-        p.value[2].toLocaleString('en-IE',{maximumFractionDigits:0});
-      if(p.seriesId==='decision_boundary')return '<b>NPV = 0 boundary</b><br>Price €'+
-        p.value[0].toFixed(2)+'/can<br>Minimum demand '+p.value[1].toFixed(4)+'× Q1';
-      return '';
-    }""").js_code
-    return {
-        'backgroundColor': BG, 'animation': False,
-        'aria': {'enabled': True, 'description':
-            'Joint selling-price and pre-price-demand decision map. The dashed '
-            'boundary gives zero NPV and the green region gives positive NPV. '
-            f'Annual fixed costs are EUR {active.annual_fixed_cost:,.0f}, '
-            f'unit variable cost is EUR {case.unit_variable_cost * kwargs["variable_cost_coefficient"]:.2f}, '
-            f'and assumed demand elasticity is {kwargs["demand_elasticity"]:g}.'},
-        'textStyle': {'fontFamily': 'Inter, system-ui, sans-serif', 'color': MUTED},
-        'title': {'text': 'Pre-price demand · × Q1', 'left': 0, 'top': 0,
-                  'textStyle': {'fontSize': 11, 'fontWeight': 500, 'color': MUTED}},
-        'grid': {'left': 54, 'right': 18, 'top': 78, 'bottom': 65},
-        'tooltip': {'trigger': 'item', 'confine': True,
-            'formatter': frontier_tooltip, 'backgroundColor': '#FFFFFFF5',
-            'textStyle': {'color': INK, 'fontSize': 11}},
-        'legend': {'data': ['NPV = 0 boundary'], 'left': 0, 'top': 27,
-            'textStyle': {'color': MUTED, 'fontSize': 11}},
-        'toolbox': {'show': True, 'right': 0, 'top': 0,
-            'feature': {'saveAsImage': {'title': 'Download PNG',
-                'name': 'WakeUp_price_demand_decision_map', 'pixelRatio': 2}}},
-        'xAxis': {'type': 'value', 'min': xmin, 'max': xmax, 'splitNumber': 5,
-            'name': 'Price · EUR / can', 'nameLocation': 'middle', 'nameGap': 40,
-            'nameTextStyle': {'fontSize': 11, 'color': MUTED},
-            'axisLabel': {'formatter': price_formatter, 'color': MUTED, 'fontSize': 11, 'hideOverlap': True},
-            'axisLine': {'lineStyle': {'color': '#CBD5E0'}}, 'axisTick': {'show': False},
-            'splitLine': {'lineStyle': {'color': GRID, 'type': 'dashed'}}},
-        'yAxis': {'type': 'value', 'min': ymin, 'max': ymax, 'splitNumber': 5,
-            'name': '', 'nameGap': 22,
-            'nameTextStyle': {'fontSize': 11, 'color': MUTED},
-            'axisLabel': {'formatter': demand_formatter, 'color': MUTED, 'fontSize': 11},
-            'axisLine': {'show': False}, 'axisTick': {'show': False},
-            'splitLine': {'lineStyle': {'color': GRID, 'type': 'dashed'}}},
-        'graphic': [{'type': 'text', 'right': 22, 'top': 83,
-            'style': {'text': 'Green: positive NPV', 'fill': TEAL, 'fontSize': 11,
-                      'backgroundColor': '#FFFFFFBB', 'padding': 4}}],
-        'series': [
-            {'id': 'decision_positive_area', 'type': 'custom', 'renderItem': render_area,
-             'data': polygons, 'silent': True, 'clip': True, 'z': 1,
-             'encode': {'x': [0, 1], 'y': [2, 3, 4]}},
-            {'id': 'decision_boundary', 'name': 'NPV = 0 boundary', 'type': 'line',
-             'data': boundary, 'showSymbol': False, 'connectNulls': False, 'clip': True,
-             'lineStyle': {'color': TEAL, 'type': 'dashed', 'width': 2.7}, 'z': 4,
-             'markLine': {'silent': True, 'symbol': 'none', 'data': [
-                 {'xAxis': case.price, 'lineStyle': {'color': GREY, 'type': 'dotted'},
-                  'label': {'formatter': f'Original price €{case.price:.2f}', 'position': 'insideStartTop', 'fontSize': 10}},
-                 {'yAxis': 1.1, 'lineStyle': {'color': GREY, 'type': 'dotted'},
-                  'label': {'formatter': 'Q2 demand benchmark 1.10×', 'position': 'insideEndTop', 'fontSize': 10}}]}},
-            {'id': 'decision_current', 'name': 'Current scenario', 'type': 'scatter',
-             'data': [[current_price, active.sales_coefficient, active.npv]], 'symbolSize': 14,
-             'itemStyle': {'color': TEAL if active.npv >= 0 else '#BE4660', 'borderColor': BG, 'borderWidth': 2.5},
-             'label': {'show': True, 'formatter': f'Now: {"-" if active.npv < 0 else ""}€{abs(active.npv):,.0f}', 'position': 'bottom',
-                       'fontSize': 11, 'color': INK, 'backgroundColor': '#FFFFFFEB', 'padding': [4, 6]}, 'z': 6}
+    }""".replace('PRICE','true' if price_axis else 'false').replace('NPV','true' if npv_metric else 'false')).js_code
+    marks=[{'yAxis':hurdle,'lineStyle':{'color':GOLD,'type':'dashed'},
+            'label':{'formatter':targetlabel,'position':'insideEndBottom','color':GOLD,'fontSize':10}},
+           {'xAxis':px,'lineStyle':{'color':color,'type':'dotted','opacity':.5},'label':{'show':False}}]
+    pointlabel=('Q1 / NOW\n' if same else 'NOW\n')+(_money(current_result.npv) if npv_metric else f'{py:.6f}' if py is not None else '')
+    chart={
+        'backgroundColor':BG,'animationDurationUpdate':350,
+        'textStyle':{'fontFamily':'Inter, system-ui, sans-serif','color':MUTED},
+        'aria':{'enabled':True,'description':f'{metric} sensitivity to {axis}. Both curves link higher prices to lower unit sales using an illustrative elasticity of 1. Grey is Q1 reference; dashed is the selected baseline. The diamond marks zero NPV.'},
+        'grid':{'left':55,'right':20,'top':60,'bottom':60},
+        'legend':{'type':'scroll','left':0,'right':20,'top':0,'data':['Q1 reference','Selected baseline'],'textStyle':{'color':MUTED,'fontSize':10},'itemWidth':18},
+        'tooltip':{'trigger':'axis','confine':True,'formatter':tooltip,'backgroundColor':'#FFFFFFF5','textStyle':{'color':INK,'fontSize':11}},
+        'toolbox':{'show':True,'right':0,'top':25,'feature':{'saveAsImage':{'title':'Download PNG','name':f'WakeUp_{metric}_{"price" if price_axis else "cost"}','pixelRatio':2}}},
+        'xAxis':{'type':'value','min':rows[0]['x']/xf,'max':rows[-1]['x']/xf,'splitNumber':4,
+                 'name':'Price · EUR / can' if price_axis else 'Fixed-cost change / year','nameLocation':'middle','nameGap':38,
+                 'nameTextStyle':{'fontSize':10,'color':MUTED},'axisLabel':{'formatter':xformatter,'fontSize':10,'hideOverlap':True,'color':MUTED},**_axis_style()},
+        'yAxis':{'type':'value','min':ymin,'max':ymax,'splitNumber':4,'name':'EUR thousands' if npv_metric else 'IRR · decimal','nameGap':20,
+                 'nameTextStyle':{'fontSize':10,'color':MUTED},'axisLabel':{'fontSize':10,'color':MUTED,'formatter':JsCode("function(v){return Math.round(v).toLocaleString('en-IE');}" if npv_metric else "function(v){return v.toFixed(2);}").js_code},
+                 'axisLine':{'show':False},'axisTick':{'show':False},'splitLine':{'lineStyle':{'color':GRID,'type':'dashed'}}},
+        'series':[
+            {'id':'q1_curve','name':'Q1 reference','type':'line','data':reference,'showSymbol':False,'connectNulls':False,'lineStyle':{'color':GREY,'width':2.2}},
+            {'id':'scenario_curve','name':'Selected baseline','type':'line','data':current,'showSymbol':False,'connectNulls':False,'lineStyle':{'color':color,'width':2.7,'type':'dashed'},
+             'markLine':{'silent':True,'symbol':'none','data':marks},
+             'markArea':{'silent':True,'label':{'show':False},'data':[[{'yAxis':hurdle,'itemStyle':{'color':'#ECF7F2AA'}},{'yAxis':ymax}],[{'yAxis':ymin,'itemStyle':{'color':'#FFF0F2A6'}},{'yAxis':hurdle}]]}},
+            {'id':'q1_point','name':'Q1 baseline','type':'scatter','data':[[bx,by]],'symbol':'emptyCircle','symbolSize':10,'itemStyle':{'color':GREY},'label':{'show':not same,'formatter':'Q1','position':'bottom','color':MUTED,'fontSize':10},'z':5},
+            {'id':'current_point','name':'Current scenario','type':'scatter','data':[[px,py]] if py is not None else [],'symbolSize':14,
+             'itemStyle':{'color':color,'borderColor':BG,'borderWidth':2},'label':{'show':True,'formatter':pointlabel,'position':'top','distance':12,'fontSize':11,'color':color,'backgroundColor':'#FFFFFFE8','padding':[4,6]},'z':7},
         ]}
+    if roots:
+        chart['series'].append({'id':'break_even','name':'Break-even','type':'scatter','data':[[r/xf,hurdle] for r in roots],
+                                'symbol':'diamond','symbolSize':11,'itemStyle':{'color':GOLD,'borderColor':BG,'borderWidth':1},'z':6})
+    if py is not None and not same:
+        chart['series'].append({'id':'comparison_link','name':'Q1 to current','type':'line','data':[[bx,by],[px,py]],'showSymbol':False,'silent':True,'lineStyle':{'color':color,'type':'dotted','opacity':.6},'z':4})
+    return chart
+
+
+def sales_sensitivity(case):
+    """Only sales volume varies, against each Q1 year; price5.10/cost220k fixed."""
+    root=solve_sales(case,-20000)
+    anchors=[.9,1.,1.1,root]
+    xs=sorted(set(float(v) for v in np.linspace(.8,1.2,101))|set(anchors))
+    return [dict(sales_coefficient=x,npv=model(case,x,-20000).npv) for x in xs],root
+
+
+def sales_options(case,selected=1.1):
+    rows,root=sales_sensitivity(case)
+    values=[r['npv']/1000 for r in rows]+[0]
+    lo,hi=min(values)-50,max(values)+50
+    points=[(.9,'Q1 plan −10%'),(1.,'No Q2 extra sales'),(1.1,'Q2 forecast')]
+    series=[{'id':'sales_curve','name':'NPV','type':'line','data':[[r['sales_coefficient']*100,r['npv']/1000] for r in rows],
+             'showSymbol':False,'lineStyle':{'color':TEAL,'width':2.8},
+             'markLine':{'silent':True,'symbol':'none','data':[{'yAxis':0,'lineStyle':{'color':GOLD,'type':'dashed'},'label':{'formatter':'NPV = 0','position':'insideEndTop','color':GOLD}}]},
+             'markArea':{'silent':True,'label':{'show':False},'data':[[{'yAxis':0,'itemStyle':{'color':'#ECF7F2AA'}},{'yAxis':hi}]]}},
+            {'id':'sales_break_even','name':'Sales break-even','type':'scatter','data':[[root*100,0]],'symbol':'diamond','symbolSize':12,'itemStyle':{'color':GOLD},
+             'label':{'show':True,'formatter':f'Break-even {root*100:.2f}% of Q1','position':'bottom','distance':13,'fontSize':10,'color':GOLD,'backgroundColor':'#FFFFFFEA','padding':[3,5]},'z':7}]
+    for i,(m,label) in enumerate(points):
+        result=model(case,m,-20000)
+        series.append({'id':f'sales_example_{i}','name':label,'type':'scatter','data':[[m*100,result.npv/1000]],
+                       'symbolSize':15 if abs(m-selected)<1e-8 else 10,
+                       'itemStyle':{'color':TEAL if result.npv>=0 else '#BE4660','borderColor':BG,'borderWidth':2},
+                       'label':{'show':True,'formatter':label+'\n'+_money(result.npv),'position':'top' if i!=1 else 'bottom','distance':10,'fontSize':10,'color':INK,'backgroundColor':'#FFFFFFEB','padding':[4,6]},'z':6})
+    return {'backgroundColor':BG,'animationDurationUpdate':300,'textStyle':{'fontFamily':'Inter,system-ui,sans-serif','color':MUTED},
+            'aria':{'enabled':True,'description':'Single-variable sales sensitivity. Price is held at EUR5.10 and annual fixed costs at EUR220000. Sales coefficient scales each year of the Q1 forecast. 100 percent means no additional Q2 sales, not flat annual volume. Only unit sales vary.'},
+            'title':{'text':'Price €5.10 · annual fixed costs €220k','left':0,'top':0,'textStyle':{'fontSize':11,'fontWeight':500,'color':MUTED}},
+            'grid':{'left':64,'right':34,'top':55,'bottom':67},
+            'tooltip':{'trigger':'axis','confine':True,'formatter':JsCode("function(items){let p=items.find(p=>p.seriesId==='sales_curve')||items[0];if(!p||!Array.isArray(p.value))return '';return '<b>'+p.value[0].toFixed(2)+'% of each Q1 year</b><br>NPV €'+(p.value[1]*1000).toLocaleString('en-IE',{maximumFractionDigits:0});}").js_code},
+            'toolbox':{'show':True,'right':0,'top':0,'feature':{'saveAsImage':{'title':'Download PNG','name':'WakeUp_sales_only_sensitivity','pixelRatio':2}}},
+            'xAxis':{'type':'value','min':80,'max':120,'interval':10,'name':'Sales volume / corresponding Q1 year','nameLocation':'middle','nameGap':39,'nameTextStyle':{'fontSize':11},
+                     'axisLabel':{'fontSize':10,'formatter':'{value}%'},**_axis_style()},
+            'yAxis':{'type':'value','min':lo,'max':hi,'splitNumber':4,'name':'NPV · EUR thousands','nameTextStyle':{'fontSize':10},'nameGap':20,
+                     'axisLabel':{'fontSize':10,'formatter':JsCode("function(v){return Math.round(v).toLocaleString('en-IE');}").js_code},'axisLine':{'show':False},'axisTick':{'show':False},'splitLine':{'lineStyle':{'color':GRID,'type':'dashed'}}},
+            'series':series}
+
+
+def decision_frontier_options(case,active):
+    """Price × total annual fixed-cost map: green BELOW zero-NPV cost ceiling."""
+    xmin,xmax=_price_range(case,active)
+    map_plan=1.1
+    current_result=model(case,map_plan,active.fixed_cost_change,price_coefficient=active.price_coefficient,demand_elasticity=BASE_ELASTICITY)
+    raw=[]
+    for price in np.linspace(xmin,xmax,151):
+        root=solve_fixed_cost(case,map_plan,price_coefficient=price/case.price,demand_elasticity=BASE_ELASTICITY)
+        raw.append(None if root is None else case.annual_fixed_cost+root)
+    finite=[v for v in raw if v is not None]
+    ymin=max(0,min(100000,current_result.annual_fixed_cost-80000))
+    ymax=max(350000,current_result.annual_fixed_cost+80000,max(finite,default=0)+25000)
+    # Exact x-axis intersections keep shaded cells faithful at the plot limits.
+    edges=[]
+    for fixed in [ymin,ymax]:
+        edges.extend(r*case.price for r in solve_price(case,map_plan,fixed-case.annual_fixed_cost,demand_elasticity=BASE_ELASTICITY,lower=xmin/case.price,upper=xmax/case.price))
+    xs=sorted(set(float(p) for p in np.linspace(xmin,xmax,151))|{case.price,active.unit_price,4.50,5.355}|set(edges))
+    boundary=[];clipped=[]
+    for price in xs:
+        root=solve_fixed_cost(case,map_plan,price_coefficient=price/case.price,demand_elasticity=BASE_ELASTICITY)
+        ceiling=None if root is None else case.annual_fixed_cost+root
+        boundary.append([price,None if ceiling is None else ceiling/1000])
+        clipped.append(ymin if ceiling is None else min(ymax,max(ymin,ceiling)))
+    polygons=[]
+    for i in range(len(xs)-1):
+        if clipped[i]<=ymin and clipped[i+1]<=ymin:continue
+        polygons.append([xs[i],xs[i+1],ymin/1000,clipped[i]/1000,clipped[i+1]/1000])
+    area=JsCode("""function(params,api){return {type:'polygon',shape:{points:[api.coord([api.value(0),api.value(2)]),api.coord([api.value(1),api.value(2)]),api.coord([api.value(1),api.value(4)]),api.coord([api.value(0),api.value(3)])]},style:{fill:'#DFF2E8',stroke:'none'}};}""").js_code
+    chart={
+      'backgroundColor':BG,'animation':False,'textStyle':{'fontFamily':'Inter, system-ui, sans-serif','color':MUTED},
+      'aria':{'enabled':True,'description':'Joint price and total annual fixed-cost map. Green shading below the dashed zero-NPV cost ceiling denotes positive project NPV. Higher prices automatically reduce sales under an illustrative elasticity of 1. The Q2 annual sales plan is used throughout. Hollow points mark zero NPV; A, B, C and D show worked price/cost combinations.'},
+      'title':{'text':'Annual fixed costs · EUR thousands','left':0,'top':0,'textStyle':{'fontSize':11,'fontWeight':500,'color':MUTED}},
+      'legend':{'data':['NPV = 0 boundary'],'left':0,'top':27,'textStyle':{'fontSize':11,'color':MUTED}},
+      'grid':{'left':54,'right':18,'top':78,'bottom':65},
+      'tooltip':{'trigger':'item','confine':True,'formatter':JsCode("""function(p){if(p.seriesId==='decision_example')return '<b>'+p.data.name+'</b><br>Price €'+p.value[0].toFixed(3)+'/can<br>Annual fixed costs €'+(p.value[1]*1000).toLocaleString('en-IE',{maximumFractionDigits:0})+'<br>NPV €'+p.value[2].toLocaleString('en-IE',{maximumFractionDigits:0})+'<br>Fixed-cost headroom €'+p.value[3].toLocaleString('en-IE',{maximumFractionDigits:0})+'/year';if(p.seriesId==='decision_current')return '<b>Current scenario</b><br>Price €'+p.value[0].toFixed(2)+'/can<br>Annual fixed costs €'+(p.value[1]*1000).toLocaleString('en-IE',{maximumFractionDigits:0})+'<br>NPV €'+p.value[2].toLocaleString('en-IE',{maximumFractionDigits:0});if((p.seriesId==='decision_boundary'||p.seriesId==='decision_example_ceiling')&&p.value[1]!==null)return '<b>Zero-NPV cost ceiling</b><br>Price €'+p.value[0].toFixed(2)+'/can<br>Annual fixed costs €'+(p.value[1]*1000).toLocaleString('en-IE',{maximumFractionDigits:0});return '';}""").js_code},
+      'toolbox':{'show':True,'right':0,'top':0,'feature':{'saveAsImage':{'title':'Download PNG','name':'WakeUp_price_fixed_cost_map','pixelRatio':2}}},
+      'xAxis':{'type':'value','min':xmin,'max':xmax,'splitNumber':5,'name':'Price · EUR / can','nameLocation':'middle','nameGap':40,'nameTextStyle':{'fontSize':11,'color':MUTED},'axisLabel':{'fontSize':10,'hideOverlap':True,'formatter':JsCode("function(v){return '€'+v.toFixed(2);}").js_code},**_axis_style()},
+      'yAxis':{'type':'value','min':ymin/1000,'max':ymax/1000,'splitNumber':5,'name':'','axisLabel':{'fontSize':10,'formatter':JsCode("function(v){return Math.round(v).toLocaleString('en-IE');}").js_code},'axisLine':{'show':False},'axisTick':{'show':False},'splitLine':{'lineStyle':{'color':GRID,'type':'dashed'}}},
+      'graphic':[{'type':'text','right':22,'top':83,'style':{'text':'Green: positive NPV','fill':TEAL,'fontSize':10,'backgroundColor':'#FFFFFFCC','padding':4}}],
+      'series':[
+        {'id':'decision_positive_area','type':'custom','renderItem':area,'data':polygons,'silent':True,'clip':True,'encode':{'x':[0,1],'y':[2,3,4]},'z':1},
+        {'id':'decision_boundary','name':'NPV = 0 boundary','type':'line','data':boundary,'showSymbol':False,'connectNulls':False,'clip':True,'lineStyle':{'color':TEAL,'type':'dashed','width':2.7},'z':3,
+         'markLine':{'silent':True,'symbol':'none','data':[{'xAxis':case.price,'lineStyle':{'color':GREY,'type':'dotted'},'label':{'formatter':f'Original €{case.price:.2f}','position':'insideStartTop','fontSize':10}}]}},
+        {'id':'decision_current','name':'Current scenario','type':'scatter','data':[[active.unit_price,current_result.annual_fixed_cost/1000,current_result.npv]] if abs(active.sales_coefficient-1.1)<1e-9 and not any(abs(active.unit_price-p)<1e-9 and abs(current_result.annual_fixed_cost-f)<1e-6 for p,f in [(4.50,190000),(case.price,220000),(5.355,250000),(4.50,220000)]) else [],'symbolSize':14,'itemStyle':{'color':TEAL if current_result.npv>=0 else '#BE4660','borderColor':BG,'borderWidth':2.5},'label':{'show':True,'formatter':'Now: '+_money(current_result.npv),'position':'bottom','fontSize':10,'color':INK,'backgroundColor':'#FFFFFFEB','padding':[4,6]},'z':6},
+      ]}
+
+    examples=[];ceilings=[];connectors=[]
+    for name,p,fixed,pos in [('A',4.50,190000,'left'),('B',case.price,220000,'right'),('C',5.355,250000,'bottom'),('D',4.50,220000,'left')]:
+        r=model(case,map_plan,fixed-case.annual_fixed_cost,price_coefficient=p/case.price,demand_elasticity=BASE_ELASTICITY)
+        root=solve_fixed_cost(case,map_plan,price_coefficient=p/case.price,demand_elasticity=BASE_ELASTICITY)
+        if root is None:continue
+        ceiling=case.annual_fixed_cost+root
+        examples.append({'name':name,'value':[p,fixed/1000,r.npv,ceiling-fixed],'itemStyle':{'color':'#BE4660' if r.npv<0 else INK},'label':{'show':True,'formatter':name,'position':pos,'fontSize':10,'color':INK,'backgroundColor':'#FFFFFFEB','padding':[3,5]}})
+        if name in ('A','C'):
+            ceilings.append([p,ceiling/1000])
+            connectors.append([{'coord':[p,fixed/1000]},{'coord':[p,ceiling/1000]}])
+    chart['series'].extend([
+        {'id':'decision_example','name':'Worked examples','type':'scatter','data':examples,'symbolSize':11,'itemStyle':{'color':INK,'borderColor':BG,'borderWidth':2},'z':7,
+         'markLine':{'silent':True,'symbol':['none','none'],'label':{'show':False},'lineStyle':{'color':GREY,'type':'dotted'},'data':connectors}},
+        {'id':'decision_example_ceiling','name':'Example cost ceilings','type':'scatter','data':ceilings,'symbol':'emptyCircle','symbolSize':11,'itemStyle':{'color':TEAL,'borderWidth':2},'z':6}])
+    return chart
+
+# Compatibility names for older local entry points; active application uses the
+# explicit operating_* API. Sales panel is a separate fixed-price/cost test.
+sensitivity=operating_sensitivity
+options=operating_options
