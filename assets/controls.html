@@ -1,15 +1,15 @@
 <div class="drivers">
   <section class="driver sales">
-    <div class="driver-name">Can sales</div>
-    <div class="driver-unit">of Q1 forecast</div>
+    <div class="driver-name">Base demand</div>
+    <div class="driver-unit">before price response</div>
     <output id="sales-readout">100.0%</output>
     <div class="vertical-track">
       <span class="top-label" id="sales-max">200%</span>
-      <input type="range" id="sales-range" aria-label="Can sales coefficient" min="50" max="200" step="0.01" value="100" />
+      <input type="range" id="sales-range" aria-label="Demand coefficient before price response" min="50" max="200" step="0.01" value="100" />
       <span class="bottom-label">50%</span>
     </div>
     <label class="exact-label" for="sales-number">Coefficient ×</label>
-    <input class="exact-number" id="sales-number" aria-label="Exact sales coefficient" type="number" min="0.5" max="2" step="0.001" value="1" />
+    <input class="exact-number" id="sales-number" aria-label="Exact demand coefficient" type="number" min="0.5" max="2" step="0.001" value="1" />
   </section>
   <section class="driver costs">
     <div class="driver-name">Fixed costs</div>

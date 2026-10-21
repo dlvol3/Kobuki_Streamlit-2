@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-19-v3",
+  "version": "2026-10-21-ceo",
   "source": {
     "file": "Kobuki_Group_4.xlsx",
     "sheet": "Question 1",
@@ -78,6 +78,21 @@
     "Initial NWC remains EUR 80,000 as either sensitivity input changes.",
     "Sales scale within existing capacity; no additional CAPEX is modelled.",
     "Past R&D and allocated existing corporate costs are excluded.",
-    "Q2 preset applies 1.10 times Q1 units and a net annual fixed-cost change of EUR -20,000; other inputs are shared."
-  ]
+    "Q2 preset applies 1.10 times Q1 units and a net annual fixed-cost change of EUR -20,000; other inputs are shared.",
+    "Price is realised net selling price; variable unit cost and price scale uniformly across Years 1\u20137.",
+    "Price elasticity is hypothetical and constant, not estimated or endorsed as a forecast.",
+    "Demand coefficient is measured before price response; price changes also alter current-year-revenue NWC.",
+    "Incremental marketing and distribution spending must be included in fixed or variable costs; extra capacity CAPEX and minimum-order inventory effects need separate extension.",
+    "Positive NPV regions are deterministic model feasibility, not probabilities, confidence intervals or a safety guarantee."
+  ],
+  "scenario_extensions": {
+    "classification": "Illustrative management sensitivities; no estimated price elasticity supplied in the case",
+    "volume_rule": "Q1 annual units * demand_coefficient * price_coefficient ** (-demand_elasticity)",
+    "price_range_for_frontier": [
+      0.8,
+      1.3
+    ],
+    "demand_elasticity_default": 0.0,
+    "cashflow_scope": "Full project, before investment; continuation decisions after launch require remaining avoidable cash flows"
+  }
 }

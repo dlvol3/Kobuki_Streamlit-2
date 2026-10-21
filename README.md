@@ -1,10 +1,12 @@
 # Kobuki / Wake Up! sensitivity analysis
 
-Streamlit + Apache ECharts · Group 2: Jorge Pablo Yue · Version 2026-10-19-v3
+Streamlit + Apache ECharts · Group 2: Jorge Pablo Yue · Version 2026-10-21-ceo
 
 ## Open locally
 
 Double-click **Start_Kobuki.command**, then open <http://127.0.0.1:8501>.
+
+In VS Code, open this **Kobuki_Streamlit** folder, then use **Tasks: Run Task > Start Kobuki** from the Command Palette. The task uses the local `.venv` environment. If the app is already running on port 8501, use the existing browser page.
 
 For a fresh Python 3.12 environment:
 
@@ -15,7 +17,36 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-## Controls
+## Publish from VS Code to your GitHub
+
+1. Open **Source Control**. If needed, select **Initialize Repository** for this app folder.
+2. Review the files, stage the app changes, enter a commit message such as `Prepare Kobuki Group 2 app`, and select **Commit**.
+3. After the commit, select **Publish to GitHub** to create a repository in your account. If a GitHub remote already exists, use **Publish Branch** or **Push** instead. Follow the browser sign-in prompt and return to VS Code.
+4. Open the repository on GitHub and confirm that `app.py`, `requirements.txt`, `assets/`, `data/` and `.streamlit/config.toml` are present.
+
+**Settings Sync is not required.** GitHub sign-in for publishing uses VS Code's built-in Git authentication. A Settings Sync authentication error does not, by itself, indicate that Git push has failed. See the official [GitHub workflow in VS Code](https://code.visualstudio.com/docs/sourcecontrol/github).
+
+## Deploy the GitHub repository
+
+In [Streamlit Community Cloud](https://share.streamlit.io/), choose **Create app**, then select your GitHub repository and published branch. With this app folder as the repository root, set **Main file path** to **`app.py`** and **Advanced settings > Python version** to **3.12**. This app needs no secrets. Deploy, then share the resulting `streamlit.app` address with the professor. See the official [deployment instructions](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy).
+
+## CEO decision scenarios · 21 October 2026
+
+The page now connects demand, net selling price, unit variable cost and execution spending. The original Q1/Q2 baselines are unchanged. The case attributes the Q2 volume uplift to promotions and advantageous display arrangements; other explanations for sales changes are management hypotheses.
+
+- **Demand before pricing:** the original volume coefficient, before the selected price response.
+- **Net selling price / variable cost:** editable EUR per can; price changes alter revenue-linked NWC as well as contribution.
+- **Assumed elasticity:** non-negative scenario magnitude; actual units = Q1 units × demand coefficient × (price / 5.10)^(-elasticity). Zero holds units fixed. The case supplies no estimate.
+- **Joint price-demand map:** shaded green denotes positive full-project NPV; dashed boundary denotes zero NPV. It is deterministic feasibility, not confidence or guaranteed safety. Held costs and elasticity are disclosed.
+- **Price-response chart:** compares unchanged volume with the selected demand response; nonlinear cases may have multiple price break-even points.
+- **Recovery choices:** solve demand, annual fixed cost, price or unit variable-cost boundaries while holding the other assumptions fixed. Price search is bounded to EUR 4.08–6.63.
+- **Execution-budget shortcut:** a combined hypothetical rescue includes EUR 10k additional annual spend, rather than assuming implementation is free.
+
+Cost actions must be assessed for effects on marketing, product quality, service and demand. Larger procurement orders can increase inventory/NWC. Capacity and incremental CAPEX are not optimised: any scenario requiring extra equipment needs a revised case. These are **pre-investment** boundaries; post-launch continuation uses remaining avoidable cash flows.
+
+Reconciled example: Q2 demand -5% gives NPV -EUR 43,064. Price +5% gives +EUR 144,875 with fixed units, +EUR 13,813 at assumed elasticity 1, and -EUR 111,008 at elasticity 2. With unchanged price, unit cost EUR 1.542313/can or annual fixed costs EUR 206,257.88 are alternative zero-NPV limits.
+
+## Original controls
 
 - **Q1 baseline:** original sales path and EUR 240,000 annual fixed costs.
 - **Q2 baseline:** 1.10 times Q1 unit sales; EUR 40,000 project savings plus EUR 20,000 additional corporate cost. Net annual fixed costs are EUR 220,000.
@@ -23,9 +54,9 @@ python -m streamlit run app.py
 - **Fixed costs:** add or subtract the same EUR amount in each production year.
 - **Find break-even sales / fixed costs:** hold the other input constant and solve NPV = 0.
 
-The large decision banner, NPV, IRR and annual costs update together. WACC stays fixed at **0.102974**. Returns are displayed primarily as decimals.
+The large decision banner, NPV, IRR, contribution and actual volume update together. WACC stays fixed at **0.102974**. Returns are displayed primarily as decimals.
 
-The two charts share the selected sensitivity axis. Decision focus is the default; Full range provides wider context. Grey is the Q1 reference curve; the dashed curve holds the other input at its current value. An open dot fixes the actual Q1 result, while a labelled ring marks the selected scenario and a dotted connector shows their difference. Green and pink regions distinguish outcomes above and below the hurdle; the gold diamond is break-even. Change versus Q1 is shown above both charts. Each chart offers a PNG download. One **Cash flows** expander provides a compact annual table and the complete CSV.
+The two charts share the selected sensitivity axis. Decision focus is the default; Full range provides wider context. Grey is the Q1 reference curve; the dashed curve holds the selected price, unit cost, elasticity and other driver at their current values. An open dot fixes the actual Q1 result, while a labelled ring marks the selected scenario and a dotted connector shows their difference. Green and pink regions distinguish outcomes above and below the hurdle; the gold diamond is break-even. Change versus Q1 is shown above both charts. Each chart offers a PNG download. One **Cash flows** expander provides a compact annual table and the complete CSV.
 
 ## Workbook reconciliation
 

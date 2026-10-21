@@ -1,7 +1,7 @@
 """Financial and interaction contracts for the chart redesign."""
 import unittest
 
-from charts import options, sensitivity
+from charts import options, sensitivity, pricing_options, decision_frontier_options
 from finance import load_case, model
 
 
@@ -130,6 +130,95 @@ class ChartTests(unittest.TestCase):
                             self.assertIsNone(row[key])
                         else:
                             self.assertAlmostEqual(row[key], expected, places=10)
+
+
+    def test_extended_driver_curves_and_roots_hold_prices_costs_and_response(self):
+        kwargs = dict(price_coefficient=1.05, variable_cost_coefficient=1.1, demand_elasticity=2)
+        active = model(self.case, 1.045, -20000, **kwargs)
+        for axis in ['Sales coefficient', 'Fixed-cost change']:
+            rows, root, _, _ = self.chart(active, axis, 'NPV')
+            for row in rows[::23]:
+                m = row['x'] if axis == 'Sales coefficient' else active.sales_coefficient
+                d = active.fixed_cost_change if axis == 'Sales coefficient' else row['x']
+                expected = model(self.case, m, d, **kwargs)
+                self.assertAlmostEqual(row['current_npv_eur'], expected.npv, places=6)
+                self.assertAlmostEqual(row['effective_sales_coefficient'], m * 1.05**-2, places=10)
+            self.assertIsNotNone(root)
+            m = root if axis == 'Sales coefficient' else active.sales_coefficient
+            d = active.fixed_cost_change if axis == 'Sales coefficient' else root
+            self.assertAlmostEqual(model(self.case, m, d, **kwargs).npv, 0, places=5)
+
+    def test_price_curve_discloses_response_and_preserves_two_price_roots(self):
+        active = model(self.case, 1.06, -20000, demand_elasticity=1.4)
+        chart = pricing_options(self.case, active)
+        series = {item['id']: item for item in chart['series']}
+        self.assertIn('price_fixed_volume', series)
+        self.assertEqual(len(series['price_break_even']['data']), 2)
+        for price, value in series['price_break_even']['data']:
+            self.assertEqual(value, 0)
+            expected = model(self.case, 1.06, -20000,
+                             price_coefficient=price/self.case.price, demand_elasticity=1.4)
+            self.assertAlmostEqual(expected.npv, 0, places=5)
+        self.assertIn('not an estimated', chart['aria']['description'])
+        response = series['price_response']['data']
+        for price, value in response[::29]:
+            expected = model(self.case, 1.06, -20000,
+                             price_coefficient=price/self.case.price, demand_elasticity=1.4)
+            self.assertAlmostEqual(value * 1000, expected.npv, places=6)
+        self.assertGreater(max(p[1] for p in response), response[0][1])
+        self.assertGreater(max(p[1] for p in response), response[-1][1])
+        marks = series['price_response']['markLine']['data']
+        self.assertTrue(any(mark.get('yAxis') == 0 for mark in marks))
+        self.assertEqual(series['price_current']['data'][0][0], self.case.price)
+
+    def test_price_curve_avoids_duplicate_series_when_no_volume_response(self):
+        active = model(self.case, 1.1, -20000)
+        chart = pricing_options(self.case, active)
+        ids = [series['id'] for series in chart['series']]
+        self.assertNotIn('price_fixed_volume', ids)
+        self.assertIn('price_response', ids)
+        self.assertEqual(chart['xAxis']['min'], self.case.price * .8)
+        self.assertEqual(chart['xAxis']['max'], self.case.price * 1.3)
+
+    def test_joint_frontier_shading_and_current_point_use_one_held_cost_scenario(self):
+        kwargs = dict(price_coefficient=1.05, variable_cost_coefficient=.95, demand_elasticity=2)
+        active = model(self.case, 1.045, -20000, **kwargs)
+        chart = decision_frontier_options(self.case, active)
+        series = {item['id']: item for item in chart['series']}
+        self.assertNotIn('q1_point', series)
+        self.assertNotIn('q2_point', series)
+        self.assertEqual(series['decision_current']['data'], [[self.case.price * 1.05, 1.045, active.npv]])
+        self.assertEqual(series['decision_boundary']['lineStyle']['type'], 'dashed')
+        boundary = series['decision_boundary']['data']
+        for price, demand in boundary[::31]:
+            if demand is None:
+                continue
+            held = dict(kwargs, price_coefficient=price/self.case.price)
+            self.assertAlmostEqual(model(self.case, demand, -20000, **held).npv, 0, places=5)
+            self.assertGreater(model(self.case, demand+.001, -20000, **held).npv, 0)
+        self.assertGreater(len(series['decision_positive_area']['data']), 0)
+        for left, right, lroot, rroot, top in series['decision_positive_area']['data']:
+            self.assertLessEqual(lroot, top)
+            self.assertLessEqual(rroot, top)
+            for price, demand in [(left, lroot), (right, rroot)]:
+                held = dict(kwargs, price_coefficient=price/self.case.price)
+                self.assertGreaterEqual(model(self.case, demand, -20000, **held).npv, -.01)
+
+    def test_joint_frontier_does_not_shade_an_infeasible_price_demand_region(self):
+        active = model(self.case, 1.0, 0, variable_cost_coefficient=10)
+        chart = decision_frontier_options(self.case, active)
+        series = {item['id']: item for item in chart['series']}
+        self.assertEqual(series['decision_positive_area']['data'], [])
+
+
+    def test_new_charts_keep_units_clear_without_long_left_axis_titles(self):
+        active = model(self.case, 1.045, -20000, demand_elasticity=2)
+        for chart in [pricing_options(self.case, active), decision_frontier_options(self.case, active)]:
+            self.assertEqual(chart['yAxis']['name'], '')
+            self.assertGreater(chart['legend']['top'], chart['title']['top'] + 15)
+            self.assertGreater(chart['grid']['top'], chart['legend']['top'] + 25)
+            self.assertEqual(chart['xAxis']['name'], 'Price · EUR / can')
+        self.assertEqual(decision_frontier_options(self.case, active)['title']['text'], 'Pre-price demand · × Q1')
 
 
 if __name__ == '__main__':
