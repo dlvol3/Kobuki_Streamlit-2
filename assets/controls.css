@@ -5,7 +5,7 @@
 .driver-name {font-size:15px;font-weight:650;letter-spacing:-.2px;}
 .driver-unit {font-size:10px;color:#52667a;margin:4px 0 12px;}
 output {display:block;font-size:23px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.8px;min-height:29px;white-space:nowrap;}
-.price output {color:#087d68}.costs output {color:#6652b8}
+.sales output {color:#087d68}.costs output {color:#6652b8}
 .vertical-track {height:235px;display:flex;align-items:center;flex-direction:column;position:relative;margin:12px 0 10px;}
 .top-label,.bottom-label {font-size:10px;color:#60748a;line-height:18px;}
 input[type=range] {writing-mode:vertical-lr;direction:rtl;appearance:none;-webkit-appearance:none;width:9px;height:188px;margin:8px 0;cursor:ns-resize;border-radius:12px;background:linear-gradient(to top,#087d68 var(--fill,33.33%),#dbe5ec var(--fill,33.33%));touch-action:none;}

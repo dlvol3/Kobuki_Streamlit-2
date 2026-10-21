@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-21-sales-price",
+  "version": "2026-10-21-sales-restored",
   "source": {
     "file": "Kobuki_Group_4.xlsx",
     "sheet": "Question 1",
@@ -77,8 +77,8 @@
     "Year 1 tax loss immediately offsets other group income.",
     "Initial NWC remains EUR 80,000 and WACC is unchanged. Price examples assume no extra machine; maximum capacity is not supplied.",
     "Past R&D and allocated existing corporate costs are excluded.",
-    "Q1/Q2 buttons select the original volume plan and reset price/fixed costs.",
-    "Price changes automatically alter can sales using an assumed elasticity of 1 only.",
+    "Q1/Q2 buttons reset the original sales coefficient and annual fixed costs; main price stays EUR5.10.",
+    "Figure 2 alone links price and volume with elasticity 1; the main sales slider directly scales Q1 units at EUR5.10.",
     "Annual fixed-cost changes are flat amounts relative to Q1 EUR 240,000; Q2 uses EUR -20,000.",
     "All other case inputs remain fixed, including EUR 1.60 production cost per can.",
     "Green shading shows modelled positive NPV, not a probability or guaranteed outcome.",
@@ -87,10 +87,10 @@
   "scenario_extensions": {
     "classification": "Illustrative price-response sensitivities; no estimated elasticity is supplied",
     "adjustable_inputs": [
-      "price_per_can",
+      "sales_coefficient_vs_q1",
       "annual_fixed_cost_change"
     ],
-    "volume_rule": "selected Q1/Q2 annual cans * (price_per_can / 5.10) ** (-elasticity)",
+    "volume_rule": "Figure 2 only: Q2 annual cans * 5.10 / price",
     "main_elasticity": 1.0,
     "price_range": [
       4.08,
@@ -129,6 +129,13 @@
         "price": 4.5,
         "annual_fixed_cost": 220000
       }
+    ],
+    "main_price": 5.1,
+    "main_sales_rule": "Each corresponding Q1 annual unit forecast multiplied by the sales coefficient",
+    "pricing_scope": "Separate Figure 2 examples; no effect on main controls or headline",
+    "sales_range": [
+      0.5,
+      2.0
     ]
   }
 }

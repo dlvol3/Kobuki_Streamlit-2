@@ -1,17 +1,16 @@
 # Wake Up! update · 21 October 2026
 
-The report and page now follow two tests:
+The main vertical controls are restored to can sales and annual fixed-cost change. Price stays EUR5.10. A coefficient of1.0 uses each Q1 annual forecast;1.1 uses Q2. Main NPV/IRR curves, headline, cash flows and break-even shortcuts all use sales and fixed costs.
 
-1. Figure 1 changes only sales, with EUR 5.10 price and EUR 220,000 annual fixed costs. Buttons compare 10% below Q1, no extra Q2 sales, and the Q2 forecast. The panel is independent of the global price/cost controls. No extra Q2 sales means Q1's annual forecasts are retained, including their growth between years.
-2. Figure 2 combines price and annual fixed costs using only the 1:1 inverse price response. A/B/C are positive-NPV examples; D is EUR 4.50/can with EUR 220,000 annual fixed costs and negative NPV. The map shows zero-NPV ceilings and annual fixed-cost headroom. The discussion explains possible demand setbacks and practical ways to improve D, without adding a production-cost control or assumed savings.
+Figure1 retains its separate fixed-price/fixed-cost sales comparison. Figure2 retains the price/fixed-cost map and A/B/C/D examples, with its own selected result; its buttons do not change the main sliders or headline. The English and bilingual PDFs are unchanged by this interface correction.
 
-Original Q1/Q2 cash flows are unchanged. Forty-four automated checks passed and the local page was checked using the scenario buttons.
+Forty-three checks passed. A real slider change from1.1 to1.0 with EUR220k annual fixed costs changed main NPV from+EUR91902.60 to-EUR153491.27, keeping price EUR5.10. Selecting the Figure2 negative example then changed only its local result to-EUR75734.77.
 
 ## Publish from VS Code
 
-1. Open this folder and review Source Control changes.
-2. Commit, then Push / Sync Changes to the existing main branch.
-3. Wait for Streamlit to rebuild. Check Figure 1's No extra Q2 sales: NPV -EUR 153,491.27. Figure 2's D shortcut should show -EUR 75,734.77 in the headline, and A should show +EUR 18,276.96. Q2 baseline remains +EUR 91,902.60.
-4. If old imports remain, use Manage app > Reboot app.
+1. Review the new Source Control changes, stage them and enter a commit message.
+2. Commit, then Push / Sync Changes.
+3. Check that the main slider is labelled Can sales, not Price per can. Q2 should show110% /1.1 and NPV+EUR91902.60.
+4. If Streamlit retains old imports, use Manage app > Reboot app.
 
-No commit or push has been performed automatically. The report QR and public URL retain the existing address; the revised page appears online after your push and cloud rebuild.
+No commit or push has been performed automatically.

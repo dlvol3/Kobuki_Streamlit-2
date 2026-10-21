@@ -14,40 +14,41 @@ class ChartTests(unittest.TestCase):
         for m,d,npv in [(1,0,-216165.7623464),(1.1,-20000,91902.5954984)]:
             r=self.result(m,d)
             self.assertAlmostEqual(r.npv,npv,places=5)
-            for axis in ['Price per can','Fixed-cost change']:
+            for axis in ['Can sales','Fixed-cost change']:
                 rows,roots=operating_sensitivity(self.case,r,axis)
                 for metric in ['NPV','IRR']:
                     chart=operating_options(self.case,r,rows,roots,axis,metric)
                     s=self.series(chart)
-                    x=r.unit_price if axis=='Price per can' else d/1000
+                    x=r.sales_coefficient*100 if axis=='Can sales' else d/1000
                     y=r.npv/1000 if metric=='NPV' else r.irr
                     self.assertAlmostEqual(s['current_point']['data'][0][0],x)
                     self.assertAlmostEqual(s['current_point']['data'][0][1],y)
                     self.assertAlmostEqual(s['q1_point']['data'][0][1],model(self.case).npv/1000 if metric=='NPV' else model(self.case).irr)
 
-    def test_sweeps_hold_baseline_and_other_operating_lever(self):
-        active=self.result(p=1.05)
-        for axis in ['Price per can','Fixed-cost change']:
+    def test_sweeps_hold_price_and_other_main_control(self):
+        active=self.result(m=1.2,d=-20000)
+        for axis in ['Can sales','Fixed-cost change']:
             rows,roots=operating_sensitivity(self.case,active,axis)
             for row in rows[::23]:
-                p=row['x']/self.case.price if axis=='Price per can' else 1.05
-                d=-20000 if axis=='Price per can' else row['x']
-                expected=self.result(d=d,p=p)
+                m=row['x'] if axis=='Can sales' else 1.2
+                d=-20000 if axis=='Can sales' else row['x']
+                expected=model(self.case,m,d)
                 self.assertAlmostEqual(row['current_npv_eur'],expected.npv,places=6)
-                self.assertAlmostEqual(row['actual_sales_coefficient'],1.1/p,places=10)
+                self.assertAlmostEqual(row['actual_sales_coefficient'],m,places=10)
+                self.assertEqual(row['price_per_can'],5.1)
             for root in roots:
-                p=root/self.case.price if axis=='Price per can' else 1.05
-                d=-20000 if axis=='Price per can' else root
-                self.assertAlmostEqual(self.result(d=d,p=p).npv,0,places=5)
+                m=root if axis=='Can sales' else 1.2
+                d=-20000 if axis=='Can sales' else root
+                self.assertAlmostEqual(model(self.case,m,d).npv,0,places=5)
 
-    def test_price_axis_automatically_reduces_units(self):
-        rows,_=operating_sensitivity(self.case,self.result(),'Price per can')
-        self.assertTrue(all(a['price_per_can']<b['price_per_can'] for a,b in zip(rows,rows[1:])))
-        self.assertTrue(all(a['actual_sales_coefficient']>b['actual_sales_coefficient'] for a,b in zip(rows,rows[1:])))
+    def test_sales_axis_changes_cans_at_fixed_price(self):
+        rows,_=operating_sensitivity(self.case,self.result(),'Can sales')
+        self.assertTrue(all(a['actual_sales_coefficient']<b['actual_sales_coefficient'] for a,b in zip(rows,rows[1:])))
+        self.assertTrue(all(r['price_per_can']==5.1 for r in rows))
 
     def test_fixed_hurdles_and_true_root_points(self):
-        active=self.result(p=1.1)
-        for axis in ['Price per can','Fixed-cost change']:
+        active=self.result(m=1.2)
+        for axis in ['Can sales','Fixed-cost change']:
             rows,roots=operating_sensitivity(self.case,active,axis)
             for metric in ['NPV','IRR']:
                 s=self.series(operating_options(self.case,active,rows,roots,axis,metric))
@@ -58,11 +59,11 @@ class ChartTests(unittest.TestCase):
                     for point in s['break_even']['data']:self.assertEqual(point[1],hurdle)
 
     def test_focus_and_full_axes_include_current_and_original(self):
-        active=self.result(p=.7,d=400000)
-        for axis in ['Price per can','Fixed-cost change']:
+        active=self.result(m=.7,d=400000)
+        for axis in ['Can sales','Fixed-cost change']:
             for full in [False,True]:
                 rows,roots=operating_sensitivity(self.case,active,axis,full)
-                anchors=[self.case.price,active.unit_price] if axis=='Price per can' else [0,-20000,400000]
+                anchors=[1.,1.1,active.sales_coefficient] if axis=='Can sales' else [0,-20000,400000]
                 self.assertLessEqual(rows[0]['x'],min(anchors))
                 self.assertGreaterEqual(rows[-1]['x'],max(anchors))
                 self.assertTrue(all(a['x']<b['x'] for a,b in zip(rows,rows[1:])))

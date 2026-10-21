@@ -1,4 +1,4 @@
-SCOPE_VERSION = "sales-price-fixed-v3"
+SCOPE_VERSION = "sales-fixed-v4"
 """Price and fixed-cost sensitivities with automatic price-volume response."""
 import math
 import numpy as np
@@ -46,25 +46,19 @@ def _price_range(case,active,full_range=False):
     return max(.01,lo),hi
 
 
-def operating_sensitivity(case,active,axis='Price per can',full_range=False):
-    """Return sweep rows and zero-NPV roots, in the axis's actual units.
-
-    Price axis is EUR/can. Fixed-cost axis is EUR/year change against Q1.
-    Q1 reference and selected curves both use an illustrative elasticity of 1;
-    only the selected baseline sales path and held operating lever differ.
-    """
-    if axis not in ('Price per can','Fixed-cost change'):
+def operating_sensitivity(case,active,axis='Can sales',full_range=False):
+    """Sales coefficient or annual fixed-cost change; price stays at EUR5.10."""
+    if axis not in ('Can sales','Fixed-cost change'):
         raise ValueError('Unknown operating sensitivity axis.')
-    price_axis=axis=='Price per can'
-    if price_axis:
-        lo,hi=_price_range(case,active,full_range)
-        roots=tuple(r*case.price for r in solve_price(case,active.sales_coefficient,
-            active.fixed_cost_change,demand_elasticity=BASE_ELASTICITY,
-            lower=lo/case.price,upper=hi/case.price))
-        anchors=[case.price,case.price*active.price_coefficient,*roots]
+    sales_axis=axis=='Can sales'
+    if sales_axis:
+        root=solve_sales(case,active.fixed_cost_change)
+        roots=() if root is None else (root,)
+        anchors=[1.,1.1,active.sales_coefficient,*roots]
+        lo=.5 if full_range else max(0.,math.floor((min(anchors)-.15)*10)/10)
+        hi=max(2.,max(anchors)+.1) if full_range else math.ceil((max(anchors)+.15)*10)/10
     else:
-        root=solve_fixed_cost(case,active.sales_coefficient,
-            price_coefficient=active.price_coefficient,demand_elasticity=BASE_ELASTICITY)
+        root=solve_fixed_cost(case,active.sales_coefficient)
         roots=() if root is None else (root,)
         anchors=[0.,-20000.,active.fixed_cost_change,*roots]
         if full_range:
@@ -78,12 +72,8 @@ def operating_sensitivity(case,active,axis='Price per can',full_range=False):
     xs=sorted(set(float(v) for v in np.linspace(lo,hi,111))|set(anchors))
     rows=[]
     for x in xs:
-        if price_axis:
-            reference=model(case,price_coefficient=x/case.price,demand_elasticity=BASE_ELASTICITY)
-            selected=_result(case,active,price=x)
-        else:
-            reference=model(case,1,x,demand_elasticity=BASE_ELASTICITY)
-            selected=_result(case,active,cost=x)
+        reference=model(case,x,0) if sales_axis else model(case,1,x)
+        selected=model(case,x,active.fixed_cost_change) if sales_axis else model(case,active.sales_coefficient,x)
         rows.append({'x':x,'reference_npv_eur':reference.npv,'current_npv_eur':selected.npv,
                      'reference_irr':reference.irr,'current_irr':selected.irr,
                      'actual_sales_coefficient':selected.effective_sales_coefficient,
@@ -94,19 +84,19 @@ def operating_sensitivity(case,active,axis='Price per can',full_range=False):
 
 def operating_options(case,active,rows,roots,axis,metric):
     """NPV/IRR view with truthful Q1/current points and fixed hurdle."""
-    price_axis=axis=='Price per can'; npv_metric=metric=='NPV'
+    price_axis=axis=='Can sales'; npv_metric=metric=='NPV'
     color=TEAL if npv_metric else VIOLET
-    xf=1 if price_axis else 1000
+    xf=.01 if price_axis else 1000
     yf=1000 if npv_metric else 1
     rk='reference_npv_eur' if npv_metric else 'reference_irr'
     ck='current_npv_eur' if npv_metric else 'current_irr'
     reference=[[r['x']/xf,None if r[rk] is None else r[rk]/yf] for r in rows]
     current=[[r['x']/xf,None if r[ck] is None else r[ck]/yf] for r in rows]
     baseline=model(case,demand_elasticity=BASE_ELASTICITY)
-    current_result=_result(case,active)
-    bx=case.price if price_axis else 0.
+    current_result=model(case,active.sales_coefficient,active.fixed_cost_change)
+    bx=100. if price_axis else 0.
     by=baseline.npv/yf if npv_metric else baseline.irr
-    px=active.unit_price if price_axis else active.fixed_cost_change/1000
+    px=active.sales_coefficient*100 if price_axis else active.fixed_cost_change/1000
     py=current_result.npv/yf if npv_metric else current_result.irr
     hurdle=0 if npv_metric else case.wacc
     values=[p[1] for p in reference+current if p[1] is not None]+[hurdle,by]
@@ -115,13 +105,13 @@ def operating_options(case,active,rows,roots,axis,metric):
     ymin,ymax=min(values)-pad,max(values)+pad
     same=py is not None and abs(px-bx)<1e-10 and abs(py-by)<1e-9
     targetlabel='NPV = 0' if npv_metric else f'WACC {case.wacc:.6f}'
-    xformatter=JsCode("function(v){return '€'+v.toFixed(2);}" if price_axis else
+    xformatter=JsCode("function(v){return v.toFixed(0)+'%';}" if price_axis else
                       "function(v){return '€'+Math.round(v)+'k';}").js_code
     tooltip=JsCode("""function(items){
       if(!Array.isArray(items))items=[items];
       let first=items.find(p=>Array.isArray(p.value));if(!first)return '';
       let x=first.value[0];
-      let html='<b>'+ (PRICE?'Price €'+x.toFixed(2)+'/can':'Fixed-cost change €'+(x*1000).toLocaleString('en-IE'))+'</b>';
+      let html='<b>'+ (PRICE?'Can sales '+x.toFixed(2)+'% of Q1':'Fixed-cost change €'+(x*1000).toLocaleString('en-IE'))+'</b>';
       for(let p of items){if(!Array.isArray(p.value)||p.value[1]===null||p.seriesId==='comparison_link')continue;
         let y=NPV?'€'+(p.value[1]*1000).toLocaleString('en-IE',{maximumFractionDigits:0}):p.value[1].toFixed(6);
         html+='<div style="margin-top:6px">'+p.marker+' '+p.seriesName+': <b>'+y+'</b></div>';
@@ -134,13 +124,13 @@ def operating_options(case,active,rows,roots,axis,metric):
     chart={
         'backgroundColor':BG,'animationDurationUpdate':350,
         'textStyle':{'fontFamily':'Inter, system-ui, sans-serif','color':MUTED},
-        'aria':{'enabled':True,'description':f'{metric} sensitivity to {axis}. Both curves link higher prices to lower unit sales using an illustrative elasticity of 1. Grey is Q1 reference; dashed is the selected baseline. The diamond marks zero NPV.'},
+        'aria':{'enabled':True,'description':f'{metric} sensitivity to {axis}. Price stays at EUR5.10; can sales and annual fixed costs determine the result. Grey is Q1 reference; dashed is the selected baseline. The diamond marks zero NPV.'},
         'grid':{'left':55,'right':20,'top':60,'bottom':60},
         'legend':{'type':'scroll','left':0,'right':20,'top':0,'data':['Q1 reference','Selected baseline'],'textStyle':{'color':MUTED,'fontSize':10},'itemWidth':18},
         'tooltip':{'trigger':'axis','confine':True,'formatter':tooltip,'backgroundColor':'#FFFFFFF5','textStyle':{'color':INK,'fontSize':11}},
-        'toolbox':{'show':True,'right':0,'top':25,'feature':{'saveAsImage':{'title':'Download PNG','name':f'WakeUp_{metric}_{"price" if price_axis else "cost"}','pixelRatio':2}}},
+        'toolbox':{'show':True,'right':0,'top':25,'feature':{'saveAsImage':{'title':'Download PNG','name':f'WakeUp_{metric}_{"sales" if price_axis else "cost"}','pixelRatio':2}}},
         'xAxis':{'type':'value','min':rows[0]['x']/xf,'max':rows[-1]['x']/xf,'splitNumber':4,
-                 'name':'Price · EUR / can' if price_axis else 'Fixed-cost change / year','nameLocation':'middle','nameGap':38,
+                 'name':'Can sales / Q1 forecast' if price_axis else 'Fixed-cost change / year','nameLocation':'middle','nameGap':38,
                  'nameTextStyle':{'fontSize':10,'color':MUTED},'axisLabel':{'formatter':xformatter,'fontSize':10,'hideOverlap':True,'color':MUTED},**_axis_style()},
         'yAxis':{'type':'value','min':ymin,'max':ymax,'splitNumber':4,'name':'EUR thousands' if npv_metric else 'IRR · decimal','nameGap':20,
                  'nameTextStyle':{'fontSize':10,'color':MUTED},'axisLabel':{'fontSize':10,'color':MUTED,'formatter':JsCode("function(v){return Math.round(v).toLocaleString('en-IE');}" if npv_metric else "function(v){return v.toFixed(2);}").js_code},
